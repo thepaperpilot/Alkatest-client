@@ -1,15 +1,15 @@
 {
-	"title": "Profectus",
-	"description": "A project made in Profectus",
-	"id": "",
-	"author": "",
+	"title": "Alkatest",
+	"description": "A test",
+	"id": "alkatest",
+	"author": "thepaperpilot",
 	"discordName": "",
 	"discordLink": "",
 
-	"versionNumber": "0.0",
+	"versionNumber": "0.0.0",
 	"versionTitle": "Initial Commit",
 
-	"allowGoBack": true,
+	"allowGoBack": false,
 	"defaultShowSmall": false,
 	"defaultDecimalsShown": 2,
 	"useHeader": true,

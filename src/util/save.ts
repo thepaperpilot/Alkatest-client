@@ -1,4 +1,5 @@
 import projInfo from "data/projInfo.json";
+import { isHosting, room } from "data/socket";
 import { globalBus } from "game/events";
 import type { Player, PlayerData } from "game/player";
 import player, { stringifySave } from "game/player";
@@ -118,12 +119,12 @@ export async function loadSave(playerObj: Partial<PlayerData>): Promise<void> {
 }
 
 setInterval(() => {
-    if (player.autosave) {
+    if (player.autosave && (!room.value || isHosting.value)) {
         save();
     }
 }, 1000);
 window.onbeforeunload = () => {
-    if (player.autosave) {
+    if (player.autosave && (!room.value || isHosting.value)) {
         save();
     }
 };

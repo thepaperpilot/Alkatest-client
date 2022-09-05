@@ -41,6 +41,11 @@
                 <span class="material-icons">library_books</span>
             </Tooltip>
         </div>
+        <div @click="roomsDialog?.open()">
+            <Tooltip display="Multiplayer" :direction="Direction.Down" xoffset="-20px">
+                <span class="material-icons">group</span>
+            </Tooltip>
+        </div>
         <div @click="options?.open()">
             <Tooltip display="Options" :direction="Direction.Down" xoffset="-66px">
                 <span class="material-icons">settings</span>
@@ -56,6 +61,11 @@
         <div @click="savesManager?.open()">
             <Tooltip display="Saves" :direction="Direction.Right">
                 <span class="material-icons">library_books</span>
+            </Tooltip>
+        </div>
+        <div @click="roomsDialog?.open()">
+            <Tooltip display="Multiplayer" :direction="Direction.Right">
+                <span class="material-icons">group</span>
             </Tooltip>
         </div>
         <div @click="options?.open()">
@@ -96,12 +106,15 @@
     <SavesManager ref="savesManager" />
     <Options ref="options" />
     <Changelog ref="changelog" />
+    <RoomsDialog ref="roomsDialog" />
 </template>
 
 <script setup lang="ts">
 import Changelog from "data/Changelog.vue";
 import projInfo from "data/projInfo.json";
+import RoomsDialog from "data/RoomsDialog.vue";
 import Tooltip from "features/tooltips/Tooltip.vue";
+import { globalBus } from "game/events";
 import { Direction } from "util/common";
 import type { ComponentPublicInstance } from "vue";
 import { ref } from "vue";
@@ -115,6 +128,9 @@ const options = ref<ComponentPublicInstance<typeof Options> | null>(null);
 // For some reason Info won't accept the changelog unless I do this:
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const changelog = ref<ComponentPublicInstance<any> | null>(null);
+const roomsDialog = ref<ComponentPublicInstance<typeof RoomsDialog> | null>(null);
+
+globalBus.on("openMultiplayer", () => roomsDialog.value?.open());
 
 const { useHeader, banner, title, discordName, discordLink, versionNumber } = projInfo;
 
@@ -205,8 +221,8 @@ function openDiscord() {
     position: fixed;
     top: 45px;
     padding: 20px;
-    right: -280px;
-    width: 200px;
+    right: -340px;
+    width: 300px;
     transition: right 0.25s ease;
     background: var(--raised-background);
     z-index: 10;
