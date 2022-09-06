@@ -4,6 +4,8 @@ import { createLayer } from "game/layers";
 import { persistent } from "game/persistence";
 import type { PlayerData } from "game/player";
 import { computed } from "vue";
+import Chat from "./Chat.vue";
+import { room } from "./socket";
 
 /**
  * @hidden
@@ -18,6 +20,7 @@ export const main = createLayer("main", function (this: BaseLayer) {
         display: jsx(() => (
             <>
                 <div>placeholder</div>
+                <Chat />
             </>
         ))
     };

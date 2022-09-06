@@ -1,7 +1,7 @@
 import Text from "components/fields/Text.vue";
 import { jsx, setDefault } from "features/feature";
 import { globalBus } from "game/events";
-import settings, { registerSettingField } from "game/settings";
+import { registerSettingField } from "game/settings";
 import { io, Socket } from "socket.io-client";
 import { load } from "util/save";
 import { ref, watch } from "vue";
@@ -136,12 +136,16 @@ function setupSocket(socket: Socket<ServerToClientEvents, ClientToServerEvents>)
         toast.info(message);
         globalBus.emit("serverSentInfo");
     });
+    socket.on("chat", (user, message) => {
+        globalBus.emit("chat", user, message);
+    });
     socket.on("set rooms", rooms => {
         globalBus.emit("setRooms", rooms);
     });
     socket.on("joined room", (r, hosting) => {
         room.value = r;
         isHosting.value = hosting;
+        globalBus.emit("chat", undefined, "you joined " + r);
     });
     socket.on("left room", () => {
         room.value = null;
@@ -186,5 +190,6 @@ declare module "game/events" {
         openMultiplayer: VoidFunction;
         setRooms: (rooms: ClientRoomData[]) => void;
         serverSentInfo: VoidFunction;
+        chat: (user: string | undefined, message: string) => void;
     }
 }
