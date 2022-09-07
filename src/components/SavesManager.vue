@@ -7,7 +7,7 @@
             <Draggable
                 :list="settings.saves"
                 handle=".handle"
-                v-if="shown"
+                v-if="shown && (!room || isHosting)"
                 :itemKey="(save: string) => save"
             >
                 <template #item="{ element }">
@@ -21,16 +21,18 @@
                     />
                 </template>
             </Draggable>
+            <div v-else>You are connected to a server - cannot change saves</div>
         </template>
         <template v-slot:footer>
             <div class="modal-footer">
                 <Text
+                    v-if="!room || isHosting"
                     v-model="saveToImport"
                     title="Import Save"
                     placeholder="Paste your save here!"
                     :class="{ importingFailed }"
                 />
-                <div class="field">
+                <div class="field" v-if="!room || isHosting">
                     <span class="field-title">Create Save</span>
                     <div class="field-buttons">
                         <button class="button" @click="openSave(newSave().id)">New Game</button>
@@ -59,6 +61,7 @@
 <script setup lang="ts">
 import Modal from "components/Modal.vue";
 import projInfo from "data/projInfo.json";
+import { isHosting, room } from "data/socket";
 import type { PlayerData } from "game/player";
 import player, { stringifySave } from "game/player";
 import settings from "game/settings";

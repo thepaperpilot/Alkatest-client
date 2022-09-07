@@ -18,9 +18,8 @@
             <button class="button open" @click="startConnecting">
                 <h3>{{ room.name }}</h3>
             </button>
-            <span class="room-host">Hosted by {{ room.host }}</span
-            ><br />
-            <div>{{ room.numContentPacks }} active content packs</div>
+            <div class="room-host">Hosted by {{ room.host }}</div>
+            <div class="room-host">{{ room.numContentPacks }} active content packs</div>
         </div>
         <div v-else class="details" style="display: flex">
             <span>Password:</span>
@@ -108,7 +107,6 @@ function submitPassword() {
 }
 
 .room-host {
-    margin-left: 4px;
     font-size: 0.7em;
     opacity: 0.7;
 }

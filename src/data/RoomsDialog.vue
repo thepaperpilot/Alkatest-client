@@ -11,7 +11,6 @@
                             <h3>Connected to {{ currentRoom }}</h3>
                         </div>
                         <br />
-                        <h4>Connected Players</h4>
                         <ul class="players-list">
                             <div v-for="(nickname, i) in nicknames" :key="i" style="display: flex">
                                 <span>{{ nickname }}</span>
@@ -31,30 +30,15 @@
                                 </button>
                             </div>
                         </ul>
-                    </template>
-                    <template v-else>
-                        <Room
-                            v-for="(room, i) in rooms ?? []"
-                            :key="i"
-                            :room="room"
-                            :isPrivate="false"
-                            @connect="password => join(room.name, password)"
-                        />
-                        <div v-if="rooms != null && rooms.length === 0" style="text-align: center">
-                            No public rooms found
-                        </div>
-                        <div v-if="rooms == null" style="text-align: center">
-                            Loading public rooms list...
-                        </div>
                         <br />
                         <button
-                            class="button"
-                            style="float: right; display: inline-block"
-                            @click="refresh()"
+                            class="button large"
+                            @click="() => host(hostRoomName, hostRoomPassword, hostPrivate)"
                         >
-                            Refresh
+                            {{ isHosting ? "Close" : "Leave" }} room
                         </button>
                     </template>
+                    <component v-else :is="render(tabs)" />
                 </template>
                 <div v-else>
                     Not connected to a server. Please set up networking in the options modal.
@@ -64,50 +48,8 @@
         </template>
         <template v-slot:footer>
             <div class="modal-footer">
-                <div v-if="connected && !currentRoom">
-                    <br />
-                    <hr />
-                    <div style="margin-top: 10px; margin-bottom: -10px">Direct Connect</div>
-                    <div class="direct-connect field">
-                        <Text v-model="directRoomName" placeholder="Room Name" />
-                        <Text v-model="directRoomPassword" placeholder="Room Password" />
-                        <div class="field-buttons">
-                            <button
-                                class="button"
-                                @click="join(directRoomName, directRoomPassword)"
-                            >
-                                Connect
-                            </button>
-                        </div>
-                    </div>
-                    <div style="margin-top: 10px; margin-bottom: -10px">Host current world</div>
-                    <div class="direct-connect field">
-                        <Text v-model="hostRoomName" placeholder="Room Name" />
-                        <Text v-model="hostRoomPassword" placeholder="Room Password" />
-                        <Toggle
-                            v-model="hostPrivate"
-                            title="Private"
-                            style="width: 320px; margin-right: 10px"
-                        />
-                        <div class="field-buttons">
-                            <button
-                                class="button"
-                                @click="host(hostRoomName, hostRoomPassword, hostPrivate)"
-                            >
-                                Host
-                            </button>
-                        </div>
-                    </div>
-                </div>
                 <div class="footer">
                     <div style="flex-grow: 1"></div>
-                    <button
-                        v-if="currentRoom"
-                        class="button modal-default-button"
-                        @click="emitToServer('leave room')"
-                    >
-                        Leave room
-                    </button>
                     <button class="button modal-default-button" @click="isOpen = false">
                         Close
                     </button>
@@ -117,7 +59,7 @@
     </Modal>
 </template>
 
-<script setup lang="ts">
+<script setup lang="tsx">
 import Text from "components/fields/Text.vue";
 import Toggle from "components/fields/Toggle.vue";
 import Modal from "components/Modal.vue";
@@ -129,9 +71,12 @@ import {
     nicknames,
     room as currentRoom
 } from "data/socket";
+import { jsx } from "features/feature";
+import { createTabFamily } from "features/tabs/tabFamily";
 import { globalBus } from "game/events";
-import { PlayerData } from "game/player";
+import player, { PlayerData } from "game/player";
 import settings from "game/settings";
+import { render } from "util/vue";
 import type { ComponentPublicInstance } from "vue";
 import { ref, watch } from "vue";
 import { main } from "./projEntry";
@@ -155,9 +100,112 @@ const hostRoomName = ref("");
 const hostRoomPassword = ref("");
 const hostPrivate = ref<boolean>(false);
 
-watch(isOpen, isOpen => {
-    if (isOpen) {
+const tabs = createTabFamily(
+    {
+        roomList: () => ({
+            display: "Room List",
+            tab: jsx(() => (
+                <>
+                    {(rooms.value ?? []).map(r => (
+                        <Room
+                            room={r}
+                            isPrivate={false}
+                            onConnect={password => join(r.name, password)}
+                        />
+                    ))}
+                    {rooms.value != null && rooms.value.length === 0 ? (
+                        <div style="text-align: center">No public rooms found</div>
+                    ) : null}
+                    {rooms.value == null ? (
+                        <div style="text-align: center">Loading public rooms list...</div>
+                    ) : null}
+                    <br />
+                    <button class="button large" onClick={refresh}>
+                        Refresh
+                    </button>
+                </>
+            ))
+        }),
+        direct: () => ({
+            display: "Private Room",
+            tab: jsx(() => (
+                <>
+                    <div class="direct-connect">
+                        <div class="field">
+                            <Text
+                                onUpdate:modelValue={value => (directRoomName.value = value)}
+                                modelValue={directRoomName.value}
+                                title="Room Name"
+                            />
+                        </div>
+                        <div class="field">
+                            <Text
+                                onUpdate:modelValue={value => (directRoomPassword.value = value)}
+                                modelValue={directRoomPassword.value}
+                                title="Room Password"
+                            />
+                        </div>
+                        <button
+                            class="button large"
+                            onClick={() => join(directRoomName.value, directRoomPassword.value)}
+                        >
+                            Connect
+                        </button>
+                    </div>
+                </>
+            ))
+        }),
+        host: () => ({
+            display: "Host",
+            tab: jsx(() => (
+                <>
+                    <div class="field">
+                        <Text
+                            onUpdate:modelValue={value => (hostRoomName.value = value)}
+                            modelValue={hostRoomName.value}
+                            title="Room Name"
+                        />
+                    </div>
+                    <div class="field">
+                        <Text
+                            onUpdate:modelValue={value => (hostRoomPassword.value = value)}
+                            modelValue={hostRoomPassword.value}
+                            title="Room Password"
+                        />
+                    </div>
+                    <Toggle
+                        onUpdate:modelValue={value => (hostPrivate.value = value)}
+                        modelValue={hostPrivate.value}
+                        title="Private"
+                    />
+                    <div style="font-size: small">
+                        You will host the currently active single player world, allowing other
+                        players to join and modify your save. It is recommended to backup your save
+                        frequently.
+                    </div>
+                    <br />
+                    <button
+                        class="button large"
+                        onClick={() =>
+                            host(hostRoomName.value, hostRoomPassword.value, hostPrivate.value)
+                        }
+                    >
+                        Host
+                    </button>
+                </>
+            ))
+        })
+    },
+    () => ({
+        style: "margin-left: 0; margin-right: 0; --layer-color: var(--link)"
+    })
+);
+
+watch([isOpen, tabs.selected], ([isOpen, currentTab]) => {
+    if (isOpen && currentTab === "roomList") {
         refresh();
+    } else if (isOpen && currentTab === "host") {
+        hostRoomName.value = `${settings.nickname}'s ${player.name}`;
     }
 });
 
@@ -165,7 +213,7 @@ watch(currentRoom, room => {
     if (!room) {
         directRoomName.value = "";
         directRoomPassword.value = "";
-        hostRoomName.value = "";
+        hostRoomName.value = `${settings.nickname}'s ${player.name}`;
         hostRoomPassword.value = "";
         refresh();
     }
@@ -227,8 +275,18 @@ function host(room: string, password?: string, privateRoom?: boolean) {
 .field-title {
     white-space: nowrap;
 }
+</style>
 
-.direct-connect :deep(input[type="text"]) {
-    margin-right: 10px;
+<style>
+.large.button {
+    font-size: large;
+    width: 100%;
+    background: var(--feature-background);
+    border-radius: var(--border-radius);
+}
+
+.large.button:hover {
+    background: var(--highlighted);
+    text-shadow: unset;
 }
 </style>
