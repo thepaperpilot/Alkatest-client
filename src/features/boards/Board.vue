@@ -21,6 +21,7 @@
         @mouseup="() => endDragging(dragging)"
         @touchend.passive="() => endDragging(dragging)"
         @mouseleave="() => endDragging(dragging)"
+        @zoom="zoom"
     >
         <svg class="stage" width="100%" height="100%">
             <g class="g1">
@@ -45,12 +46,19 @@
                         />
                     </g>
                 </transition-group>
+                <template v-for="[id, { x, y }] in cursors" :key="id">
+                    <text class="player-mouse" :style="`transform: scale(${1 / currentZoom}) translate(${x}px, ${y}px)`">
+                    🢄
+                    </text>
+                    <text class="player-name" :style="`transform: scale(${1 / currentZoom}) translate(${x + 20}px, ${y + 8}px)`">{{ nicknames[id] }}</text>
+                </template>
             </g>
         </svg>
     </panZoom>
 </template>
 
 <script setup lang="ts">
+import { cursorPositions, nicknames } from "data/socket";
 import type {
     BoardData,
     BoardNode,
@@ -88,6 +96,7 @@ const dragging = ref<number | null>(null);
 const hasDragged = ref(false);
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const stage = ref<any>(null);
+const currentZoom = ref<number>(1);
 
 const draggingNode = computed(() =>
     dragging.value == null ? undefined : props.nodes.value.find(node => node.id === dragging.value)
@@ -134,6 +143,8 @@ const receivingNode = computed(() => {
         return curr;
     }, null);
 });
+
+const cursors = computed(() => Object.entries(cursorPositions.value).filter(([id]) => id in nicknames.value));
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function onInit(panzoomInstance: any) {
@@ -193,8 +204,8 @@ function drag(e: MouseEvent | TouchEvent) {
     }
 
     props.mousePosition.value = {
-        x: (clientX - x) / scale,
-        y: (clientY - y) / scale
+        x: (clientX - x - 10),
+        y: (clientY - y - 50)
     };
 
     dragged.value = {
@@ -238,6 +249,17 @@ function endDragging(nodeID: number | null) {
         props.state.value.selectedAction = null;
     }
 }
+
+function zoom() {
+    const { x, y, scale } = stage.value.panZoomInstance.getTransform();
+    const { x: clientX, y: clientY } = lastMousePosition.value;
+
+    props.mousePosition.value = {
+        x: (clientX - x - 10),
+        y: (clientY - y - 50)
+    };
+    currentZoom.value = scale;
+}
 </script>
 
 <style>
@@ -258,5 +280,14 @@ function endDragging(nodeID: number | null) {
 .link-enter-from,
 .link-leave-to {
     opacity: 0;
+}
+
+.player-mouse,
+.player-name {
+    transition-duration: 0.1s;
+    transition-timing-function: ease;
+    fill: var(--foreground);
+    opacity: 0.5;
+    pointer-events: none;
 }
 </style>

@@ -1,11 +1,13 @@
+import { createBoard, Shape } from "features/boards/board";
 import { jsx } from "features/feature";
 import type { BaseLayer, GenericLayer } from "game/layers";
 import { createLayer } from "game/layers";
 import { persistent } from "game/persistence";
 import type { PlayerData } from "game/player";
-import { computed } from "vue";
+import { render } from "util/vue";
+import { computed, ref } from "vue";
 import Chat from "./Chat.vue";
-import { room } from "./socket";
+import { emit } from "./socket";
 
 /**
  * @hidden
@@ -13,13 +15,42 @@ import { room } from "./socket";
 export const main = createLayer("main", function (this: BaseLayer) {
     const contentPacks = persistent<(ContentPack | string)[]>(["core"]);
 
+    const board = createBoard(() => ({
+        startNodes: () => [
+            {
+                type: "placeholder",
+                position: { x: 0, y: 0 }
+            }
+        ],
+        types: {
+            placeholder: {
+                shape: Shape.Diamond,
+                size: 10,
+                title: "placeholder"
+            }
+        },
+        width: "calc(100% + 20px)",
+        height: "calc(100% + 100px)",
+        style: "margin-top: -50px; margin-left: -10px; overflow: hidden"
+    }));
+
+    const position = ref<{ x: number; y: number }>({ x: 0, y: 0 });
+    setInterval(() => {
+        const pos = board.mousePosition.value;
+        if (pos && (pos.x !== position.value.x || pos.y !== position.value.y)) {
+            position.value = pos;
+            emit("set cursor position", pos);
+        }
+    }, 50)
+
     return {
         name: "Main",
         minimizable: false,
         contentPacks,
+        board,
         display: jsx(() => (
             <>
-                <div>placeholder</div>
+                {render(board)}
                 <Chat />
             </>
         ))

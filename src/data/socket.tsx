@@ -16,6 +16,7 @@ export const connected = ref<boolean>(false);
 export const room = ref<string | null>(null);
 export const isHosting = ref<boolean>(false);
 export const nicknames = ref<Record<string, string>>({});
+export const cursorPositions = ref<Record<string, { x: number; y: number }>>({});
 
 const toast = useToast();
 
@@ -152,6 +153,11 @@ function setupSocket(socket: Socket<ServerToClientEvents, ClientToServerEvents>)
     });
     socket.on("set nicknames", n => {
         nicknames.value = n;
+    });
+    socket.on("set cursor position", (id, pos) => {
+        if (id !== socket.id) {
+            cursorPositions.value[id] = pos;
+        }
     });
 }
 
