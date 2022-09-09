@@ -1,0 +1,450 @@
+{
+    "startingNodes": [
+        {
+            "type": "core-tree",
+            "pos": {
+                "x": 0,
+                "y": 0
+            }
+        }
+    ],
+    "nodes": {
+        "core-tree": {
+            "display": "🌳",
+            "size": 1,
+            "draggable": false,
+            "data": {
+                "drops": {
+                    "type": "randomInt",
+                    "min": 4,
+                    "max": 8
+                }
+            },
+            "inventory": {
+                "slots": 1,
+                "canPlayerExtract": true,
+                "canPlayerInsert": false
+            },
+            "actions": {
+                "Chop": {
+                    "display": "🪓",
+                    "duration": 1000,
+                    "run": [
+                        {
+                            "type": "addItemsToInventory",
+                            "node": "@instance",
+                            "items": {
+                                "type": "method",
+                                "object": "#core-treeLootTable",
+                                "method": "roll",
+                                "params": {
+                                    "rolls": 1
+                                }
+                            },
+                            "overflow": "destroy"
+                        },
+                        {
+                            "type": "setData",
+                            "object": "@instance",
+                            "key": "drops",
+                            "value": {
+                                "type": "subtraction",
+                                "operands": [
+                                    {
+                                        "type": "property",
+                                        "object": "@instance",
+                                        "property": "drops"
+                                    },
+                                    1
+                                ]
+                            }
+                        },
+                        {
+                            "type": "branch",
+                            "condition": {
+                                "type": "equals",
+                                "operands": [
+                                    {
+                                        "type": "property",
+                                        "object": "@instance",
+                                        "property": "drops"
+                                    },
+                                    0
+                                ]
+                            },
+                            "true": [
+                                {
+                                    "type": "removeNode",
+                                    "node": "@instance"
+                                }
+                            ]
+                        }
+                    ]
+                }
+            }
+        },
+        "core-chest": {
+            "display": "📦",
+            "size": 1,
+            "data": {
+                "tier": "core-woodChestTier"
+            },
+            "inventory": {
+                "slots": {
+                    "type": "property",
+                    "object": {
+                        "type": "getObject",
+                        "id": {
+                            "type": "property",
+                            "object": "@instance",
+                            "property": "tier"
+                        }
+                    },
+                    "property": "slots"
+                },
+                "canPlayerExtract": true,
+                "canPlayerInsert": true
+            },
+            "actions": {
+                "type": "property",
+                "object": {
+                    "type": "property",
+                    "object": "@instance",
+                    "property": "tier"
+                },
+                "property": "actions"
+            }
+        },
+        "core-sapling": {
+            "display": "🌱",
+            "size": 1,
+            "draggable": false,
+            "place": [
+                {
+                    "type": "wait",
+                    "node": "@instance",
+                    "duration": {
+                        "type": "randomInt",
+                        "min": 10000,
+                        "max": 100000
+                    }
+                },
+                {
+                    "type": "removeNode",
+                    "node": "@instance"
+                },
+                {
+                    "type": "addNode",
+                    "nodeType": "core-tree",
+                    "pos": {
+                        "x": {
+                            "type": "property",
+                            "object": "@instance",
+                            "property": "x"
+                        },
+                        "y": {
+                            "type": "property",
+                            "object": "@instance",
+                            "property": "y"
+                        }
+                    }
+                }
+            ]
+        }
+    },
+    "items": {
+        "core-log": {
+            "display": "🪵"
+        },
+        "core-sapling": {
+            "display": "🌱",
+            "node": "core-sapling"
+        }
+    },
+    "types": {
+        "core-weightedLootTable": {
+            "data": {
+                "items": {
+                    "type": "dictionary",
+                    "keyType": {
+                        "type": "string"
+                    },
+                    "valueType": {
+                        "type": "object",
+                        "properties": {
+                            "weight": {
+                                "type": "number",
+                                "default": 1
+                            },
+                            "item": {
+                                "type": "id",
+                                "of": "item"
+                            },
+                            "quantity": {
+                                "type": "number",
+                                "default": 1
+                            }
+                        }
+                    }
+                },
+                "currentRollValue": {
+                    "type": "number",
+                    "internal": true
+                }
+            },
+            "methods": {
+                "roll": {
+                    "params": {
+                        "rolls": {
+                            "type": "number",
+                            "default": 1
+                        }
+                    },
+                    "returns": {
+                        "type": "item"
+                    },
+                    "run": [
+                        {
+                            "type": "setData",
+                            "object": "@instance",
+                            "key": "currentRollValue",
+                            "value": {
+                                "type": "random",
+                                "min": 0,
+                                "max": {
+                                    "type": "addition",
+                                    "operands": {
+                                        "type": "map",
+                                        "array": {
+                                            "type": "values",
+                                            "dictionary": {
+                                                "type": "property",
+                                                "object": "@instance",
+                                                "property": "items"
+                                            }
+                                        },
+                                        "output": {
+                                            "type": "property",
+                                            "object": "@element",
+                                            "property": "weight"
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            "type": "forEach",
+                            "array": {
+                                "type": "values",
+                                "dictionary": {
+                                    "type": "property",
+                                    "object": "@instance",
+                                    "property": "items"
+                                }
+                            },
+                            "forEach": [
+                                {
+                                    "type": "setData",
+                                    "object": "@instance",
+                                    "key": "currentRollValue",
+                                    "value": {
+                                        "type": "subtraction",
+                                        "operands": [
+                                            {
+                                                "type": "property",
+                                                "object": "@instance",
+                                                "property": "currentRollValue"
+                                            },
+                                            {
+                                                "type": "property",
+                                                "object": "@element",
+                                                "property": "weight"
+                                            }
+                                        ]
+                                    }
+                                },
+                                {
+                                    "type": "branch",
+                                    "condition": {
+                                        "type": "lessThanOrEqual",
+                                        "operands": [
+                                            {
+                                                "type": "property",
+                                                "object": "@instance",
+                                                "property": "currentRollValue"
+                                            },
+                                            0
+                                        ]
+                                    },
+                                    "true": [
+                                        {
+                                            "type": "@return",
+                                            "value": "@element"
+                                        }
+                                    ]
+                                }
+                            ]
+                        },
+                        {
+                            "type": "error",
+                            "message": "Failed to roll loot table"
+                        },
+                        {
+                            "type": "@return",
+                            "value": "null"
+                        }
+                    ]
+                }
+            }
+        },
+        "core-chestTier": {
+            "data": {
+                "upgradesFrom": {
+                    "type": "dictionary",
+                    "keyType": {
+                        "type": "id",
+                        "of": "core-chestTier"
+                    },
+                    "valueType": {
+                        "type": "object",
+                        "properties": {
+                            "cost": {
+                                "type": "array",
+                                "elementType": {
+                                    "type": "object",
+                                    "properties": {
+                                        "item": {
+                                            "type": "id",
+                                            "of": "item"
+                                        },
+                                        "quantity": {
+                                            "type": "number"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "slots": {
+                    "type": "number"
+                }
+            },
+            "properties": {
+                "actions": {
+                    "type": "dictionary",
+                    "keyType": {
+                        "type": "id",
+                        "of": "core-chestTier"
+                    },
+                    "valueType": {
+                        "type": "action"
+                    },
+                    "value": {
+                        "type": "createDictionary",
+                        "entries": {
+                            "type": "map",
+                            "array": {
+                                "type": "filter",
+                                "array": {
+                                    "type": "values",
+                                    "dictionary": {
+                                        "type": "getAllOfType",
+                                        "of": "core-chestTier"
+                                    }
+                                },
+                                "condition": {
+                                    "type": "contains",
+                                    "array": {
+                                        "type": "keys",
+                                        "dictionary": {
+                                            "type": "property",
+                                            "object": "@element",
+                                            "property": "upgradesFrom"
+                                        }
+                                    },
+                                    "value": {
+                                        "type": "property",
+                                        "object": "@instance",
+                                        "property": "id"
+                                    }
+                                }
+                            },
+                            "output": {
+                                "type": "entry",
+                                "key": {
+                                    "type": "property",
+                                    "object": "@element",
+                                    "property": "id"
+                                },
+                                "value": {
+                                    "type": "action",
+                                    "icon": "⇪",
+                                    "tooltip": {
+                                        "type": "concat",
+                                        "operands": [
+                                            "Upgrade to ",
+                                            {
+                                                "type": "property",
+                                                "object": "@element",
+                                                "property": "display"
+                                            }
+                                        ]
+                                    },
+                                    "cost": {
+                                        "type": "property",
+                                        "object":  {
+                                            "type": "property",
+                                            "object": {
+                                                "type": "property",
+                                                "object": "@element",
+                                                "property": "upgradesFrom"
+                                            },
+                                            "property": {
+                                                "type": "property",
+                                                "object": "@instance",
+                                                "property": "id"
+                                            }
+                                        },
+                                        "property": "cost"
+                                    },
+                                    "run": [
+                                        {
+                                            "type": "setData",
+                                            "object": "@instance",
+                                            "key": "tier",
+                                            "value": {
+                                                "type": "property",
+                                                "object": "@element",
+                                                "property": "id"
+                                            }
+                                        }
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "core-weightedLootTable": {
+        "core-treeLootTable": {
+            "items": {
+                "singleLog": {
+                    "item": "core-log"
+                },
+                "singleSapling": {
+                    "item": "core-sapling"
+                }
+            }
+        }
+    },
+    "core-chestTier": {
+        "core-woodChestTier": {
+            "display": "Wood Chest",
+            "upgradesFrom": {},
+            "slots": 4
+        }
+    }
+}
