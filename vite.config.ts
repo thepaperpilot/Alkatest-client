@@ -4,6 +4,7 @@ import { defineConfig } from "vite";
 import { VitePWA } from "vite-plugin-pwa";
 import tsconfigPaths from "vite-tsconfig-paths";
 import projInfo from "./src/data/projInfo.json";
+import jsonDts from "unplugin-json-dts/vite";
 
 // https://vitejs.dev/config/
 export default defineConfig({
@@ -29,6 +30,7 @@ export default defineConfig({
         vueJsx({
             // options are passed on to @vue/babel-plugin-jsx
         }),
+        jsonDts(),
         tsconfigPaths(),
         VitePWA({
             includeAssets: ["Logo.svg", "favicon.ico", "robots.txt", "apple-touch-icon.png"],

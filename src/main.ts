@@ -25,7 +25,7 @@ declare global {
 
 document.title = projInfo.title;
 window.projInfo = projInfo;
-if (projInfo.id === "") {
+if ((projInfo.id as string) === "") {
     throw "Project ID is empty! Please select a unique ID for this project in /src/data/projInfo.json";
 }
 

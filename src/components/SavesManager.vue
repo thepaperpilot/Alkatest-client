@@ -202,7 +202,7 @@ function exportSave(id: string) {
     } else {
         saveToExport = JSON.stringify(saves.value[id]);
     }
-    switch (projInfo.exportEncoding) {
+    switch (projInfo.exportEncoding as string) {
         default:
             console.warn(`Unknown save encoding: ${projInfo.exportEncoding}. Defaulting to lz`);
         case "lz":
