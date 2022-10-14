@@ -11,6 +11,13 @@ import { useToast } from "vue-toastification";
 import { ProxyState } from "util/proxies";
 import satisfies from "semver/functions/satisfies";
 import projInfo from "data/projInfo.json";
+import {
+    ClientRoomData,
+    ClientToServerEvents,
+    GameState,
+    ServerToClientEvents
+} from "alkatest-common/types";
+import { main } from "./projEntry";
 
 export const connected = ref<boolean>(false);
 export const room = ref<string | null>(null);
@@ -158,6 +165,9 @@ function setupSocket(socket: Socket<ServerToClientEvents, ClientToServerEvents>)
         if (id !== socket.id) {
             cursorPositions.value[id] = pos;
         }
+    });
+    socket.on("set content packs", contentPacks => {
+        main.contentPacks.value = contentPacks;
     });
 }
 

@@ -39,6 +39,7 @@ import { ref, toRefs, watch } from "vue";
 import Text from "components/fields/Text.vue";
 import { Direction } from "util/common";
 import Tooltip from "features/tooltips/Tooltip.vue";
+import { ClientRoomData } from "alkatest-common/types";
 
 const _props = defineProps<{
     isPrivate: boolean;

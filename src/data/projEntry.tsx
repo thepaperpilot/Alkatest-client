@@ -1,13 +1,27 @@
+import type {
+    ActionBlock,
+    ArrayBlock,
+    ContentPack,
+    NodeType,
+    ItemType,
+    TypeType
+} from "alkatest-common/types";
 import { createBoard, Shape } from "features/boards/board";
 import { jsx } from "features/feature";
 import type { BaseLayer, GenericLayer } from "game/layers";
 import { createLayer } from "game/layers";
-import { persistent } from "game/persistence";
+import { persistent, State } from "game/persistence";
 import type { PlayerData } from "game/player";
 import { render } from "util/vue";
-import { computed, ref } from "vue";
+import { computed, ref, watch } from "vue";
 import Chat from "./Chat.vue";
+import { processContentPacks } from "./contentPackLoader";
+import core from "./contentPacks/core.json";
 import { emit } from "./socket";
+
+const knownContentPacks: Record<string, ContentPack> = {
+    core
+};
 
 /**
  * @hidden
@@ -15,13 +29,31 @@ import { emit } from "./socket";
 export const main = createLayer("main", function (this: BaseLayer) {
     const contentPacks = persistent<(ContentPack | string)[]>(["core"]);
 
+    const itemTypes = ref<Record<string, ItemType>>({});
+    const nodeTypes = ref<Record<string, NodeType>>({});
+    const customTypes = ref<Record<string, TypeType>>({});
+    const customObjects = ref<Record<string, Record<string, Record<string, State>>>>({});
+    const events = ref<Record<string, ArrayBlock<ActionBlock>[]>>({});
+    watch(
+        contentPacks,
+        contentPacks => {
+            const { items, nodes, types, objects, eventListeners } = processContentPacks(
+                contentPacks.map(pack =>
+                    typeof pack === "string" ? knownContentPacks[pack] : pack
+                )
+            );
+            console.log(items, nodes, types, objects, eventListeners);
+            itemTypes.value = items;
+            nodeTypes.value = nodes;
+            customTypes.value = types;
+            customObjects.value = objects;
+            events.value = eventListeners;
+        },
+        { immediate: true }
+    );
+
     const board = createBoard(() => ({
-        startNodes: () => [
-            {
-                type: "placeholder",
-                position: { x: 0, y: 0 }
-            }
-        ],
+        startNodes: () => [],
         types: {
             placeholder: {
                 shape: Shape.Diamond,
@@ -41,7 +73,7 @@ export const main = createLayer("main", function (this: BaseLayer) {
             position.value = pos;
             emit("set cursor position", pos);
         }
-    }, 50)
+    }, 50);
 
     return {
         name: "Main",

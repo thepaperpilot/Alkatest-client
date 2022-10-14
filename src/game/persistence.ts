@@ -1,4 +1,5 @@
 import { isArray } from "@vue/shared";
+import type { ContentPack } from "alkatest-common/types";
 import { globalBus } from "game/events";
 import type { GenericLayer } from "game/layers";
 import { addingLayers, persistentRefs } from "game/layers";
@@ -39,6 +40,8 @@ export type State =
     | number
     | boolean
     | DecimalSource
+    // TODO make it accept objects that only allow State types within them
+    | ContentPack
     | { [key: string]: State }
     | { [key: number]: State };
 

@@ -1,13 +1,17 @@
 {
-    "startingNodes": [
-        {
-            "type": "core-tree",
-            "pos": {
-                "x": 0,
-                "y": 0
+    "display": "Core",
+    "eventListeners": {
+        "newGame": [
+            {
+                "_type": "addNode",
+                "nodeType": "core-tree",
+                "pos": {
+                    "x": 0,
+                    "y": 0
+                }
             }
-        }
-    ],
+        ]
+    },
     "nodes": {
         "core-tree": {
             "display": "🌳",
@@ -15,9 +19,12 @@
             "draggable": false,
             "data": {
                 "drops": {
-                    "type": "randomInt",
-                    "min": 4,
-                    "max": 8
+                    "_type": "number",
+                    "default": {
+                        "_type": "randomInt",
+                        "min": 4,
+                        "max": 8
+                    }
                 }
             },
             "inventory": {
@@ -31,10 +38,10 @@
                     "duration": 1000,
                     "run": [
                         {
-                            "type": "addItemsToInventory",
+                            "_type": "addItemsToInventory",
                             "node": "@instance",
                             "items": {
-                                "type": "method",
+                                "_type": "method",
                                 "object": "#core-treeLootTable",
                                 "method": "roll",
                                 "params": {
@@ -44,14 +51,14 @@
                             "overflow": "destroy"
                         },
                         {
-                            "type": "setData",
+                            "_type": "setData",
                             "object": "@instance",
                             "key": "drops",
                             "value": {
-                                "type": "subtraction",
+                                "_type": "subtraction",
                                 "operands": [
                                     {
-                                        "type": "property",
+                                        "_type": "property",
                                         "object": "@instance",
                                         "property": "drops"
                                     },
@@ -60,12 +67,12 @@
                             }
                         },
                         {
-                            "type": "branch",
+                            "_type": "branch",
                             "condition": {
-                                "type": "equals",
+                                "_type": "equals",
                                 "operands": [
                                     {
-                                        "type": "property",
+                                        "_type": "property",
                                         "object": "@instance",
                                         "property": "drops"
                                     },
@@ -74,7 +81,7 @@
                             },
                             "true": [
                                 {
-                                    "type": "removeNode",
+                                    "_type": "removeNode",
                                     "node": "@instance"
                                 }
                             ]
@@ -91,11 +98,11 @@
             },
             "inventory": {
                 "slots": {
-                    "type": "property",
+                    "_type": "property",
                     "object": {
-                        "type": "getObject",
+                        "_type": "getObject",
                         "id": {
-                            "type": "property",
+                            "_type": "property",
                             "object": "@instance",
                             "property": "tier"
                         }
@@ -106,9 +113,9 @@
                 "canPlayerInsert": true
             },
             "actions": {
-                "type": "property",
+                "_type": "property",
                 "object": {
-                    "type": "property",
+                    "_type": "property",
                     "object": "@instance",
                     "property": "tier"
                 },
@@ -121,29 +128,29 @@
             "draggable": false,
             "place": [
                 {
-                    "type": "wait",
+                    "_type": "wait",
                     "node": "@instance",
                     "duration": {
-                        "type": "randomInt",
+                        "_type": "randomInt",
                         "min": 10000,
                         "max": 100000
                     }
                 },
                 {
-                    "type": "removeNode",
+                    "_type": "removeNode",
                     "node": "@instance"
                 },
                 {
-                    "type": "addNode",
+                    "_type": "addNode",
                     "nodeType": "core-tree",
                     "pos": {
                         "x": {
-                            "type": "property",
+                            "_type": "property",
                             "object": "@instance",
                             "property": "x"
                         },
                         "y": {
-                            "type": "property",
+                            "_type": "property",
                             "object": "@instance",
                             "property": "y"
                         }
@@ -165,133 +172,144 @@
         "core-weightedLootTable": {
             "data": {
                 "items": {
-                    "type": "dictionary",
+                    "_type": "dictionary",
                     "keyType": {
-                        "type": "string"
+                        "_type": "string"
                     },
                     "valueType": {
-                        "type": "object",
+                        "_type": "object",
                         "properties": {
                             "weight": {
-                                "type": "number",
+                                "_type": "number",
                                 "default": 1
                             },
                             "item": {
-                                "type": "id",
+                                "_type": "id",
                                 "of": "item"
                             },
                             "quantity": {
-                                "type": "number",
+                                "_type": "number",
                                 "default": 1
                             }
                         }
                     }
                 },
                 "currentRollValue": {
-                    "type": "number",
-                    "internal": true
+                    "_type": "number",
+                    "internal": true,
+                    "default": 0
                 }
             },
             "methods": {
                 "roll": {
                     "params": {
                         "rolls": {
-                            "type": "number",
+                            "_type": "number",
                             "default": 1
                         }
                     },
                     "returns": {
-                        "type": "item"
+                        "_type": "itemStack"
                     },
                     "run": [
                         {
-                            "type": "setData",
-                            "object": "@instance",
-                            "key": "currentRollValue",
-                            "value": {
-                                "type": "random",
-                                "min": 0,
-                                "max": {
-                                    "type": "addition",
-                                    "operands": {
-                                        "type": "map",
-                                        "array": {
-                                            "type": "values",
-                                            "dictionary": {
-                                                "type": "property",
-                                                "object": "@instance",
-                                                "property": "items"
-                                            }
-                                        },
-                                        "output": {
-                                            "type": "property",
-                                            "object": "@element",
-                                            "property": "weight"
-                                        }
-                                    }
-                                }
-                            }
-                        },
-                        {
-                            "type": "forEach",
-                            "array": {
-                                "type": "values",
-                                "dictionary": {
-                                    "type": "property",
-                                    "object": "@instance",
-                                    "property": "items"
-                                }
+                            "_type": "repeat",
+                            "iterations": {
+                                "_type": "property",
+                                "object": "@params",
+                                "property": "rolls"
                             },
-                            "forEach": [
+                            "run": [
                                 {
-                                    "type": "setData",
+                                    "_type": "setData",
                                     "object": "@instance",
                                     "key": "currentRollValue",
                                     "value": {
-                                        "type": "subtraction",
-                                        "operands": [
-                                            {
-                                                "type": "property",
-                                                "object": "@instance",
-                                                "property": "currentRollValue"
-                                            },
-                                            {
-                                                "type": "property",
-                                                "object": "@element",
-                                                "property": "weight"
+                                        "_type": "random",
+                                        "min": 0,
+                                        "max": {
+                                            "_type": "addition",
+                                            "operands": {
+                                                "_type": "map",
+                                                "array": {
+                                                    "_type": "values",
+                                                    "dictionary": {
+                                                        "_type": "property",
+                                                        "object": "@instance",
+                                                        "property": "items"
+                                                    }
+                                                },
+                                                "value": {
+                                                    "_type": "property",
+                                                    "object": "@element",
+                                                    "property": "weight"
+                                                }
                                             }
-                                        ]
+                                        }
                                     }
                                 },
                                 {
-                                    "type": "branch",
-                                    "condition": {
-                                        "type": "lessThanOrEqual",
-                                        "operands": [
-                                            {
-                                                "type": "property",
-                                                "object": "@instance",
-                                                "property": "currentRollValue"
-                                            },
-                                            0
-                                        ]
+                                    "_type": "forEach",
+                                    "array": {
+                                        "_type": "values",
+                                        "dictionary": {
+                                            "_type": "property",
+                                            "object": "@instance",
+                                            "property": "items"
+                                        }
                                     },
-                                    "true": [
+                                    "forEach": [
                                         {
-                                            "type": "@return",
-                                            "value": "@element"
+                                            "_type": "setData",
+                                            "object": "@instance",
+                                            "key": "currentRollValue",
+                                            "value": {
+                                                "_type": "subtraction",
+                                                "operands": [
+                                                    {
+                                                        "_type": "property",
+                                                        "object": "@instance",
+                                                        "property": "currentRollValue"
+                                                    },
+                                                    {
+                                                        "_type": "property",
+                                                        "object": "@element",
+                                                        "property": "weight"
+                                                    }
+                                                ]
+                                            }
+                                        },
+                                        {
+                                            "_type": "branch",
+                                            "condition": {
+                                                "_type": "lessThanOrEqual",
+                                                "operands": [
+                                                    {
+                                                        "_type": "property",
+                                                        "object": "@instance",
+                                                        "property": "currentRollValue"
+                                                    },
+                                                    0
+                                                ]
+                                            },
+                                            "true": [
+                                                {
+                                                    "_type": "@return",
+                                                    "value": "@element"
+                                                }
+                                            ]
                                         }
                                     ]
+                                },
+                                {
+                                    "_type": "error",
+                                    "message": "Failed to roll loot table"
+                                },
+                                {
+                                    "_type": "@return",
+                                    "value": "null"
                                 }
                             ]
-                        },
-                        {
-                            "type": "error",
-                            "message": "Failed to roll loot table"
-                        },
-                        {
-                            "type": "@return",
-                            "value": "null"
                         }
                     ]
                 }
@@ -300,25 +318,25 @@
         "core-chestTier": {
             "data": {
                 "upgradesFrom": {
-                    "type": "dictionary",
+                    "_type": "dictionary",
                     "keyType": {
-                        "type": "id",
+                        "_type": "id",
                         "of": "core-chestTier"
                     },
                     "valueType": {
-                        "type": "object",
+                        "_type": "object",
                         "properties": {
                             "cost": {
-                                "type": "array",
+                                "_type": "array",
                                 "elementType": {
-                                    "type": "object",
+                                    "_type": "object",
                                     "properties": {
                                         "item": {
-                                            "type": "id",
+                                            "_type": "id",
                                             "of": "item"
                                         },
                                         "quantity": {
-                                            "type": "number"
+                                            "_type": "number"
                                         }
                                     }
                                 }
@@ -327,81 +345,81 @@
                     }
                 },
                 "slots": {
-                    "type": "number"
+                    "_type": "number"
                 }
             },
             "properties": {
                 "actions": {
-                    "type": "dictionary",
+                    "_type": "dictionary",
                     "keyType": {
-                        "type": "id",
+                        "_type": "id",
                         "of": "core-chestTier"
                     },
                     "valueType": {
-                        "type": "action"
+                        "_type": "action"
                     },
                     "value": {
-                        "type": "createDictionary",
+                        "_type": "createDictionary",
                         "entries": {
-                            "type": "map",
+                            "_type": "map",
                             "array": {
-                                "type": "filter",
+                                "_type": "filter",
                                 "array": {
-                                    "type": "values",
+                                    "_type": "values",
                                     "dictionary": {
-                                        "type": "getAllOfType",
+                                        "_type": "getAllOfType",
                                         "of": "core-chestTier"
                                     }
                                 },
                                 "condition": {
-                                    "type": "contains",
+                                    "_type": "contains",
                                     "array": {
-                                        "type": "keys",
+                                        "_type": "keys",
                                         "dictionary": {
-                                            "type": "property",
+                                            "_type": "property",
                                             "object": "@element",
                                             "property": "upgradesFrom"
                                         }
                                     },
                                     "value": {
-                                        "type": "property",
+                                        "_type": "property",
                                         "object": "@instance",
                                         "property": "id"
                                     }
                                 }
                             },
-                            "output": {
-                                "type": "entry",
+                            "value": {
+                                "_type": "entry",
                                 "key": {
-                                    "type": "property",
+                                    "_type": "property",
                                     "object": "@element",
                                     "property": "id"
                                 },
                                 "value": {
-                                    "type": "action",
-                                    "icon": "⇪",
+                                    "_type": "action",
+                                    "display": "⇪",
                                     "tooltip": {
-                                        "type": "concat",
+                                        "_type": "concat",
                                         "operands": [
                                             "Upgrade to ",
                                             {
-                                                "type": "property",
+                                                "_type": "property",
                                                 "object": "@element",
                                                 "property": "display"
                                             }
                                         ]
                                     },
                                     "cost": {
-                                        "type": "property",
+                                        "_type": "property",
                                         "object":  {
-                                            "type": "property",
+                                            "_type": "property",
                                             "object": {
-                                                "type": "property",
+                                                "_type": "property",
                                                 "object": "@element",
                                                 "property": "upgradesFrom"
                                             },
                                             "property": {
-                                                "type": "property",
+                                                "_type": "property",
                                                 "object": "@instance",
                                                 "property": "id"
                                             }
@@ -410,11 +428,11 @@
                                     },
                                     "run": [
                                         {
-                                            "type": "setData",
+                                            "_type": "setData",
                                             "object": "@instance",
                                             "key": "tier",
                                             "value": {
-                                                "type": "property",
+                                                "_type": "property",
                                                 "object": "@element",
                                                 "property": "id"
                                             }

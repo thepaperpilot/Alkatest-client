@@ -60,6 +60,7 @@
 </template>
 
 <script setup lang="tsx">
+import type { ClientRoomData } from "alkatest-common/types";
 import Text from "components/fields/Text.vue";
 import Toggle from "components/fields/Toggle.vue";
 import Modal from "components/Modal.vue";
