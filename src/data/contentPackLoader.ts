@@ -1,27 +1,31 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import type {
     ActionBlock,
     ArrayBlock,
-    BooleanBlock,
     ContentPack,
     CreateDictionaryBlock,
-    DictionaryBlock,
     EntryBlock,
     Inventory,
     ItemStackBlock,
     ItemType,
     MethodTypeBlock,
-    NodeAction,
     NodeType,
-    NumberBlock,
     PositionBlock,
-    ReferenceBlock,
     SizeBlock,
-    StateBlock,
-    StringBlock,
     TypeBlock,
     TypeType
 } from "alkatest-common/types";
-import type { State } from "game/persistence";
+import {
+    Context,
+    formatExceptionMessage,
+    resolveBooleanBlock,
+    resolveNumberBlock,
+    resolveSizeBlock,
+    resolveStringBlock,
+    resolveToComputed,
+    resolveNodeActionDictionaryBlock,
+resolveInventoryBlock
+} from "./contentPackResolver";
 import {
     validateStringBlock,
     validateNumberBlock,
@@ -38,12 +42,11 @@ import {
     validateSizeBlock,
     validateTypeBlock,
     validateMethodTypeBlock,
-    validatePropertyBlock
+    validatePropertyBlock,
+    validateObjectBlock
 } from "./contentPackValidation";
 
-const Invalid = Symbol("Invalid");
-
-export function isContentPack(contentPack: State): contentPack is ContentPack {
+export function isContentPack(contentPack: any): contentPack is ContentPack {
     if (typeof contentPack !== "object") {
         console.log("Content pack is not an object");
         return false;
@@ -60,7 +63,7 @@ export function processContentPacks(contentPacks: ContentPack[]): {
     items: Record<string, ItemType>;
     nodes: Record<string, NodeType>;
     types: Record<string, TypeType>;
-    objects: Record<string, Record<string, Record<string, State>>>;
+    objects: Context;
     eventListeners: Record<string, ArrayBlock<ActionBlock>[]>;
 } {
     const packs = contentPacks.filter(isContentPack);
@@ -94,6 +97,10 @@ function collectItems(contentPacks: ContentPack[]): Record<string, ItemType> {
                 return acc;
             }
             Object.keys(curr.items).forEach(id => {
+                if (id === "" || id.startsWith("@")) {
+                    console.log("Trying to add item with invalid ID", curr.display, id);
+                    return;
+                }
                 // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
                 const item = curr.items![id];
                 if (id in acc) {
@@ -128,6 +135,10 @@ function collectNodes(contentPacks: ContentPack[]): Record<string, NodeType> {
                 return acc;
             }
             Object.keys(curr.nodes).forEach(id => {
+                if (id === "" || id.startsWith("@")) {
+                    console.log("Trying to add node with invalid ID", curr.display, id);
+                    return;
+                }
                 // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
                 const node = curr.nodes![id];
                 if (id in acc) {
@@ -172,6 +183,10 @@ function collectTypes(contentPacks: ContentPack[]): Record<string, TypeType> {
                 return acc;
             }
             Object.keys(curr.types).forEach(id => {
+                if (id === "" || id.startsWith("@")) {
+                    console.log("Trying to add custom type with invalid ID", curr.display, id);
+                    return;
+                }
                 // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
                 const type = curr.types![id];
                 if (id in acc) {
@@ -192,11 +207,8 @@ function collectTypes(contentPacks: ContentPack[]): Record<string, TypeType> {
 
 // Verifies all custom objects are well formed and collects them into one array
 // Filters out any objects with an unknown type
-function collectObjects(
-    contentPacks: ContentPack[],
-    types: Record<string, TypeType>
-): Record<string, Record<string, Record<string, State>>> {
-    const objects: Record<string, Record<string, Record<string, State>>> = {};
+function collectObjects(contentPacks: ContentPack[], types: Record<string, TypeType>): Context {
+    const objects: Record<string, Record<string, Record<string, any>>> = {};
     Object.keys(types).forEach(typeId => {
         const data = types[typeId].data ?? {};
         const dataProperties = Object.keys(data);
@@ -211,14 +223,15 @@ function collectObjects(
                     return acc;
                 }
                 Object.keys(curr[typeId]).forEach(id => {
+                    if (id === "" || id.startsWith("@")) {
+                        console.log("Trying to add custom object with invalid ID", curr.display, id);
+                        return;
+                    }
                     if (typeof curr[typeId] !== "object") {
                         console.log("Custom object type not found", curr.display, typeId);
                         return;
                     }
-                    const obj = (curr[typeId] as Record<string, State>)[id] as Record<
-                        string,
-                        State
-                    >;
+                    const obj = (curr[typeId] as Record<string, any>)[id] as Record<string, any>;
                     if (typeof obj !== "object") {
                         console.log("Custom object is not an object", curr.display, typeId, id);
                         return;
@@ -243,7 +256,7 @@ function collectObjects(
                                     );
                                     return acc;
                                 }
-                                const dict = acc[curr] as Record<string, State>;
+                                const dict = acc[curr] as Record<string, any>;
                                 Object.keys(obj[curr]).forEach(key => {
                                     if (key in dict) {
                                         console.log(
@@ -256,18 +269,18 @@ function collectObjects(
                                         );
                                         return;
                                     }
-                                    dict[key] = (obj[curr] as Record<string, State>)[key];
+                                    dict[key] = (obj[curr] as Record<string, any>)[key];
                                 });
                             } else {
-                                acc[curr] = obj[curr] as State;
+                                acc[curr] = obj[curr] as any;
                             }
                         }
                         return acc;
-                    }, acc[id] ?? {});
+                    }, acc[id] ?? { "_base": types[typeId]});
                 });
             }
             return acc;
-        }, {} as Record<string, Record<string, State>>);
+        }, {} as Record<string, Record<string, any>>);
         if (objectsOfType) {
             objects[typeId] = objectsOfType;
         }
@@ -305,46 +318,83 @@ function resolveContentPacks(
     items: Record<string, ItemType>,
     nodes: Record<string, NodeType>,
     types: Record<string, TypeType>,
-    objects: Record<string, Record<string, Record<string, State>>>,
+    objects: Record<string, Record<string, Record<string, any>>>,
     eventListeners: Record<string, ArrayBlock<ActionBlock>[]>
 ) {
     // Collapse all blocks - remove extra properties, and replace all statically resolvable blocks
     // Any improperly formatted blocks will be filtered out here
     Object.keys(items).forEach(key => {
         const item = items[key];
-        if (
-            collapseProperty(item, "display", collapseStringBlock) === Invalid ||
-            collapseOptionalProperty(item, "node", collapseStringBlock) === Invalid ||
-            collapseOptionalProperty(item, "maxStackSize", collapseNumberBlock) === Invalid
-        ) {
-            console.log(`Item type '${key}' removed due to invalid property`);
+        try {
+            if (collapseProperty(item, "display", collapseStringBlock, []) == null) {
+                item.display = resolveToComputed(item, "display", resolveStringBlock);
+            }
+            if (collapseOptionalProperty(item, "node", collapseStringBlock, []) == null) {
+                item.node = resolveToComputed(item, "node", resolveStringBlock);
+            }
+            if (collapseOptionalProperty(item, "maxStackSize", collapseNumberBlock, []) == null) {
+                item.maxStackSize = resolveToComputed(item, "maxStackSize", resolveNumberBlock);
+            }
+        } catch (exception) {
+            console.log(
+                formatExceptionMessage(
+                    `Item type '${key}' removed`,
+                    exception as { message: string; stack: string[] }
+                )
+            );
             delete items[key];
         }
     });
     Object.keys(nodes).forEach(key => {
         const node = nodes[key];
-        if (
-            collapseProperty(node, "display", collapseStringBlock) === Invalid ||
-            collapseProperty(node, "size", collapseSizeBlock) === Invalid ||
-            collapseOptionalProperty(node, "draggable", collapseBooleanBlock) === Invalid ||
-            collapseOptionalProperty(node, "data", collapseTypeDictionaryBlock) === Invalid ||
-            collapseOptionalProperty(node, "inventory", collapseInventoryBlock) === Invalid ||
-            collapseOptionalProperty(node, "actions", collapseNodeActionDictionaryBlock) === Invalid
-        ) {
-            console.log(`Node type '${key}' removed due to invalid property`);
+        try {
+            if (collapseProperty(node, "display", collapseStringBlock, []) == null) {
+                node.display = resolveToComputed(node, "display", resolveStringBlock);
+            }
+            if (collapseProperty(node, "size", collapseSizeBlock, []) == null) {
+                node.size = resolveToComputed(node, "size", resolveSizeBlock);
+            }
+            if (collapseOptionalProperty(node, "draggable", collapseBooleanBlock, []) == null) {
+                node.draggable = resolveToComputed(node, "draggable", resolveBooleanBlock);
+            }
+            if (collapseOptionalProperty(node, "data", collapseTypeDictionaryBlock, []) == null) {
+                node.data = resolveToComputed(node, "data", resolveTypeDictionaryBlock);
+            }
+            if (collapseOptionalProperty(node, "inventory", collapseInventoryBlock, []) == null) {
+                node.inventory = resolveToComputed(node, "inventory", resolveInventoryBlock);
+            }
+            if (collapseOptionalProperty(node, "actions", collapseNodeActionDictionaryBlock, []) == null) {
+                node.actions = resolveToComputed(node, "actions", resolveNodeActionDictionaryBlock);
+            }
+        } catch (exception) {
+            console.log(
+                formatExceptionMessage(
+                    `Node type '${key}' removed`,
+                    exception as { message: string; stack: string[] }
+                )
+            );
             delete nodes[key];
         }
     });
     Object.keys(types).forEach(key => {
         const type = types[key];
-        if (
-            collapseOptionalProperty(type, "data", collapseTypeDictionaryBlock) === Invalid ||
-            collapseOptionalProperty(type, "methods", collapseMethodTypeDictionaryBlock) ===
-                Invalid ||
-            collapseOptionalProperty(type, "properties", collapsePropertyDictionaryBlock) ===
-                Invalid
-        ) {
-            console.log(`Object type '${key}' removed due to invalid property`);
+        try {
+            if (collapseOptionalProperty(type, "data", collapseTypeDictionaryBlock, []) == null) {
+                type.data = resolveToComputed(type, "data", resolveNodeActionDictionaryBlock);
+            }
+            if (collapseOptionalProperty(type, "methods", collapseMethodTypeDictionaryBlock, []) == null) {
+                type.methods = resolveToComputed(type, "methods", resolveMethodTypeDictionaryBlock;
+            }
+            if (collapseOptionalProperty(type, "properties", collapsePropertyDictionaryBlock, []) == null) {
+                type.properties = resolveToComputed(type, "properties", resolveNodeActionDictionaryBlock);
+            }
+        } catch (exception) {
+            console.log(
+                formatExceptionMessage(
+                    `Object type '${key}' removed`,
+                    exception as { message: string; stack: string[] }
+                )
+            );
             delete types[key];
         }
     });
@@ -358,16 +408,25 @@ function resolveContentPacks(
             const data = types[type].data;
             if (data) {
                 const isInvalid = Object.keys(data).some(dataKey => {
-                    const value = collapseProperty(
-                        object,
-                        dataKey,
-                        collapseBlockByType(data[dataKey])
-                    );
-                    if (value === Invalid || value == null) {
-                        console.log(`Object ${key} removed due to invalid data`, dataKey);
+                    try {
+                        const value = collapseProperty(
+                            object,
+                            dataKey,
+                            collapseBlockByType(data[dataKey]),
+                            []
+                        );
+                        if (value == null) {
+                            throw { message: "object could not resolve", stack: [] };
+                        }
+                    } catch (exception) {
+                        console.log(
+                            formatExceptionMessage(
+                                `Object '${key}' removed due to property '${dataKey}'`,
+                                exception as { message: string; stack: string[] }
+                            )
+                        );
                         return true;
                     }
-                    return false;
                 });
                 if (isInvalid) {
                     delete objects[key];
@@ -382,12 +441,26 @@ function resolveContentPacks(
     Object.keys(eventListeners).forEach(eventName => {
         const listeners = eventListeners[eventName];
         for (let i = 0; i < listeners.length; i++) {
-            const listener = collapseOptionalProperty(listeners, i, collapseActionArrayBlock);
-            if (listener === Invalid || listener == null) {
+            try {
+                const listener = collapseOptionalProperty(
+                    listeners,
+                    i,
+                    collapseActionArrayBlock,
+                    []
+                );
+                if (listener == null) {
+                    throw { message: "event listener could not resolve", stack: [] };
+                }
+            } catch (exception) {
+                console.log(
+                    formatExceptionMessage(
+                        `Event listener #${i} for event '${eventName}' removed`,
+                        exception as { message: string; stack: string[] }
+                    )
+                );
                 console.log("Could not resolve event listener", eventName, i);
                 listeners.splice(i, 1);
                 i--;
-                continue;
             }
         }
     });
@@ -396,12 +469,10 @@ function resolveContentPacks(
 function collapseProperty<T, S extends keyof T, R extends T[S]>(
     obj: T,
     key: S,
-    collapseFunction: (value: T[typeof key]) => R | null | typeof Invalid
-): R | null | typeof Invalid {
-    const value = collapseFunction(obj[key]);
-    if (value === Invalid) {
-        return Invalid;
-    }
+    collapseFunction: (value: T[typeof key], stack: string[]) => R | null,
+    stack: string[]
+): R | null {
+    const value = collapseFunction(obj[key], [...stack, key as string]);
     if (value != null) {
         obj[key] = value;
     }
@@ -411,15 +482,13 @@ function collapseProperty<T, S extends keyof T, R extends T[S]>(
 function collapseOptionalProperty<T, S extends keyof T, R extends T[S]>(
     obj: T,
     key: S,
-    collapseFunction: (value: NonNullable<T[typeof key]>) => R | null | typeof Invalid
-): R | null | typeof Invalid {
+    collapseFunction: (value: NonNullable<T[typeof key]>, stack: string[]) => R | null,
+    stack: string[]
+): R | null {
     if (obj[key] == null) {
         return null;
     }
-    const value = collapseFunction(obj[key] as NonNullable<T[S]>);
-    if (value === Invalid) {
-        return Invalid;
-    }
+    const value = collapseFunction(obj[key] as NonNullable<T[S]>, [...stack, key as string]);
     if (value != null) {
         obj[key] = value;
     }
@@ -432,19 +501,28 @@ function whitelistProperties<T extends object>(obj: T, ...whitelist: (keyof T)[]
     );
 }
 
-function collapseStringBlock(block: StringBlock): string | null | typeof Invalid {
-    if (!validateStringBlock(block)) {
-        return Invalid;
+function collapseObjectBlock(block: any, stack: string[]): (object & { _type: never }) | null {
+    const errorContainer = { message: "", stack };
+    if (!validateObjectBlock(block, errorContainer)) {
+        throw errorContainer;
+    }
+    if ("_type" in block) {
+        return collapseReferenceBlock(block, stack);
+    }
+    return block;
+}
+
+function collapseStringBlock(block: any, stack: string[]): string | null {
+    const errorContainer = { message: "", stack };
+    if (!validateStringBlock(block, errorContainer)) {
+        throw errorContainer;
     }
     if (typeof block === "string") {
         return block;
     }
     switch (block._type) {
         case "concat": {
-            const operands = collapseProperty(block, "operands", collapseStringArrayBlock);
-            if (operands === Invalid) {
-                return Invalid;
-            }
+            const operands = collapseProperty(block, "operands", collapseStringArrayBlock, stack);
             whitelistProperties(block, "_type", "operands");
             if (operands != null && operands.every(op => typeof op === "string")) {
                 return operands.join("");
@@ -452,23 +530,21 @@ function collapseStringBlock(block: StringBlock): string | null | typeof Invalid
             return null;
         }
         default:
-            return collapseReferenceBlock(block);
+            return collapseReferenceBlock(block, stack);
     }
 }
 
-function collapseNumberBlock(block: NumberBlock): number | null | typeof Invalid {
-    if (!validateNumberBlock(block)) {
-        return Invalid;
+function collapseNumberBlock(block: any, stack: string[]): number | null {
+    const errorContainer = { message: "", stack };
+    if (!validateNumberBlock(block, errorContainer)) {
+        throw errorContainer;
     }
     if (typeof block === "number") {
         return block;
     }
     switch (block._type) {
         case "addition": {
-            const operands = collapseProperty(block, "operands", collapseNumberArrayBlock);
-            if (operands === Invalid) {
-                return Invalid;
-            }
+            const operands = collapseProperty(block, "operands", collapseNumberArrayBlock, stack);
             whitelistProperties(block, "_type", "operands");
             if (operands != null && operands.every(op => typeof op === "number")) {
                 return (operands as number[]).reduce((a, b) => a + b);
@@ -476,10 +552,7 @@ function collapseNumberBlock(block: NumberBlock): number | null | typeof Invalid
             return null;
         }
         case "subtraction": {
-            const operands = collapseProperty(block, "operands", collapseNumberArrayBlock);
-            if (operands === Invalid) {
-                return Invalid;
-            }
+            const operands = collapseProperty(block, "operands", collapseNumberArrayBlock, stack);
             whitelistProperties(block, "_type", "operands");
             if (operands != null && operands.every(op => typeof op === "number")) {
                 return (operands as number[]).reduce((a, b) => a - b);
@@ -491,23 +564,21 @@ function collapseNumberBlock(block: NumberBlock): number | null | typeof Invalid
         case "randomInt":
             return null;
         default:
-            return collapseReferenceBlock(block);
+            return collapseReferenceBlock(block, stack);
     }
 }
 
-function collapseBooleanBlock(block: BooleanBlock): boolean | null | typeof Invalid {
-    if (!validateBooleanBlock(block)) {
-        return null;
+function collapseBooleanBlock(block: any, stack: string[]): boolean | null {
+    const errorContainer = { message: "", stack };
+    if (!validateBooleanBlock(block, errorContainer)) {
+        throw errorContainer;
     }
     if (typeof block === "boolean") {
         return block;
     }
     switch (block._type) {
         case "equals": {
-            const operands = collapseProperty(block, "operands", collapseBooleanArrayBlock);
-            if (operands === Invalid) {
-                return Invalid;
-            }
+            const operands = collapseProperty(block, "operands", collapseStateArrayBlock, stack);
             whitelistProperties(block, "_type", "operands");
             if (operands != null && operands.every(op => isCollapsedState(op))) {
                 for (let i = 1; i < operands.length; i++) {
@@ -520,10 +591,7 @@ function collapseBooleanBlock(block: BooleanBlock): boolean | null | typeof Inva
             return null;
         }
         case "notEquals": {
-            const operands = collapseProperty(block, "operands", collapseBooleanArrayBlock);
-            if (operands === Invalid) {
-                return Invalid;
-            }
+            const operands = collapseProperty(block, "operands", collapseStateArrayBlock, stack);
             whitelistProperties(block, "_type", "operands");
             if (operands != null && operands.every(op => isCollapsedState(op))) {
                 for (let i = 1; i < operands.length; i++) {
@@ -538,58 +606,7 @@ function collapseBooleanBlock(block: BooleanBlock): boolean | null | typeof Inva
             return null;
         }
         case "greaterThan": {
-            const operands = collapseProperty(block, "operands", collapseNumberArrayBlock);
-            if (operands === Invalid) {
-                return Invalid;
-            }
-            whitelistProperties(block, "_type", "operands");
-            if (operands != null && operands.every(op => typeof op === "number")) {
-                for (let i = 1; i < operands.length; i++) {
-                    if (operands[i] > operands[i - 1]) {
-                        return false;
-                    }
-                }
-                return true;
-            }
-            return null;
-        }
-        case "greaterThanOrEqual": {
-            const operands = collapseProperty(block, "operands", collapseNumberArrayBlock);
-            if (operands === Invalid) {
-                return Invalid;
-            }
-            whitelistProperties(block, "_type", "operands");
-            if (operands != null && operands.every(op => typeof op === "number")) {
-                for (let i = 1; i < operands.length; i++) {
-                    if (operands[i] >= operands[i - 1]) {
-                        return false;
-                    }
-                }
-                return true;
-            }
-            return null;
-        }
-        case "lessThan": {
-            const operands = collapseProperty(block, "operands", collapseNumberArrayBlock);
-            if (operands === Invalid) {
-                return Invalid;
-            }
-            whitelistProperties(block, "_type", "operands");
-            if (operands != null && operands.every(op => typeof op === "number")) {
-                for (let i = 1; i < operands.length; i++) {
-                    if (operands[i] < operands[i - 1]) {
-                        return false;
-                    }
-                }
-                return true;
-            }
-            return null;
-        }
-        case "lessThanOrEqual": {
-            const operands = collapseProperty(block, "operands", collapseNumberArrayBlock);
-            if (operands === Invalid) {
-                return Invalid;
-            }
+            const operands = collapseProperty(block, "operands", collapseNumberArrayBlock, stack);
             whitelistProperties(block, "_type", "operands");
             if (operands != null && operands.every(op => typeof op === "number")) {
                 for (let i = 1; i < operands.length; i++) {
@@ -601,90 +618,137 @@ function collapseBooleanBlock(block: BooleanBlock): boolean | null | typeof Inva
             }
             return null;
         }
-        case "objectExists": {
-            const object = collapseProperty(block, "object", collapseStringBlock);
-            if (object === Invalid) {
-                return Invalid;
+        case "greaterThanOrEqual": {
+            const operands = collapseProperty(block, "operands", collapseNumberArrayBlock, stack);
+            whitelistProperties(block, "_type", "operands");
+            if (operands != null && operands.every(op => typeof op === "number")) {
+                for (let i = 1; i < operands.length; i++) {
+                    if (operands[i] < operands[i - 1]) {
+                        return false;
+                    }
+                }
+                return true;
             }
+            return null;
+        }
+        case "lessThan": {
+            const operands = collapseProperty(block, "operands", collapseNumberArrayBlock, stack);
+            whitelistProperties(block, "_type", "operands");
+            if (operands != null && operands.every(op => typeof op === "number")) {
+                for (let i = 1; i < operands.length; i++) {
+                    if (operands[i] >= operands[i - 1]) {
+                        return false;
+                    }
+                }
+                return true;
+            }
+            return null;
+        }
+        case "lessThanOrEqual": {
+            const operands = collapseProperty(block, "operands", collapseNumberArrayBlock, stack);
+            whitelistProperties(block, "_type", "operands");
+            if (operands != null && operands.every(op => typeof op === "number")) {
+                for (let i = 1; i < operands.length; i++) {
+                    if (operands[i] > operands[i - 1]) {
+                        return false;
+                    }
+                }
+                return true;
+            }
+            return null;
+        }
+        case "contextExists": {
+            collapseProperty(block, "object", collapseStringBlock, stack);
             whitelistProperties(block, "_type", "object");
             return null;
         }
         case "propertyExists": {
-            const object = collapseProperty(block, "object", collapseStringBlock);
-            const property = collapseProperty(block, "property", collapseStringBlock);
-            if (object === Invalid || property === Invalid) {
-                return Invalid;
-            }
+            const object = collapseProperty(block, "object", collapseObjectBlock, stack);
+            const property = collapseProperty(block, "property", collapseStringBlock, stack);
             whitelistProperties(block, "_type", "object", "property");
+            if (object != null && property != null) {
+                return property in object;
+            }
+            return null;
+        }
+        case "all": {
+            const operands = collapseProperty(block, "operands", collapseBooleanArrayBlock, stack);
+            whitelistProperties(block, "_type", "operands");
+            if (operands != null && operands.every(op => typeof op === "boolean")) {
+                return operands.every(value => value);
+            }
+            return null;
+        }
+        case "any": {
+            const operands = collapseProperty(block, "operands", collapseBooleanArrayBlock, stack);
+            whitelistProperties(block, "_type", "operands");
+            if (operands != null && operands.every(op => typeof op === "boolean")) {
+                return operands.some(value => value);
+            }
+            return null;
+        }
+        case "none": {
+            const operands = collapseProperty(block, "operands", collapseBooleanArrayBlock, stack);
+            whitelistProperties(block, "_type", "operands");
+            if (operands != null && operands.every(op => typeof op === "boolean")) {
+                return !operands.every(value => value);
+            }
             return null;
         }
         default:
-            return collapseReferenceBlock(block);
+            return collapseReferenceBlock(block, stack);
     }
 }
 
-function collapseStateBlock(block: StateBlock): State | null | typeof Invalid {
-    let state: State | null | typeof Invalid = collapseStringBlock(block);
-    if (state != Invalid) {
-        return state;
-    }
-    state = collapseNumberBlock(block);
-    if (state != Invalid) {
-        return state;
-    }
-    state = collapseBooleanBlock(block);
-    if (state != Invalid) {
-        return state;
-    }
-    state = collapseStateArrayBlock(block);
-    if (state != Invalid) {
-        return state;
-    }
-    state = collapseStateDictionaryBlock(block);
-    return state;
+function collapseStateBlock(block: any, stack: string[]): any | null {
+    try {
+        return collapseStringBlock(block, stack);
+    } catch {}
+    try {
+        return collapseNumberBlock(block, stack);
+    } catch {}
+    try {
+        return collapseBooleanBlock(block, stack);
+    } catch {}
+    try {
+        return collapseStateArrayBlock(block, stack);
+    } catch {}
+    try {
+        return collapseStateDictionaryBlock(block, stack);
+    } catch {}
+    try {
+        return collapseObjectBlock(block, stack);
+    } catch {}
+    throw { message: "block could not resolve to any state", stack };
 }
 
-function collapseArrayBlock<T, S extends T>(
-    collapseFunction: (block: T) => S | null | typeof Invalid
-) {
-    return function (block: ArrayBlock<T>): (T | S)[] | null | typeof Invalid {
-        if (!validateArrayBlock(block)) {
-            return null;
+function collapseArrayBlock<T>(collapseFunction: (block: any, stack: string[]) => T | null) {
+    return function (block: any, stack: string[]): T[] | null {
+        const errorContainer = { message: "", stack };
+        if (!validateArrayBlock(block, errorContainer)) {
+            throw errorContainer;
         }
         if ("_type" in block) {
             switch (block._type) {
                 case "filter": {
-                    const array = collapseProperty(
-                        block,
-                        "array",
-                        collapseArrayBlock(collapseFunction)
-                    );
-                    if (array === Invalid) {
-                        return Invalid;
-                    }
+                    collapseProperty(block, "array", collapseArrayBlock(collapseFunction), stack);
                     whitelistProperties(block, "_type", "array", "condition");
                     // TODO Have a context providing @element, so if the array and filter are static const the whole block is
                     return null;
                 }
                 case "map": {
-                    const array = collapseProperty(block, "array", collapseStateArrayBlock);
-                    if (array === Invalid) {
-                        return Invalid;
-                    }
+                    collapseProperty(block, "array", collapseStateArrayBlock, stack);
                     whitelistProperties(block, "_type", "array", "value");
                     // TODO Have a context providing @element, so if the array and filter are static const the whole block is
-                    // Should also validate the returned value is correctly typed
                     return null;
                 }
                 case "keys": {
                     const dictionary = collapseProperty(
                         block,
                         "dictionary",
-                        collapseStateDictionaryBlock
+                        collapseStateDictionaryBlock,
+                        stack
                     );
-                    if (dictionary === Invalid) {
-                        return Invalid;
-                    }
                     whitelistProperties(block, "_type", "dictionary");
                     if (dictionary != null) {
                         return Object.keys(dictionary) as T[];
@@ -695,35 +759,35 @@ function collapseArrayBlock<T, S extends T>(
                     const dictionary = collapseProperty(
                         block,
                         "dictionary",
-                        collapseDictionaryBlock(collapseFunction)
+                        collapseDictionaryBlock(collapseFunction),
+                        stack
                     );
-                    if (dictionary === Invalid) {
-                        return Invalid;
-                    }
                     whitelistProperties(block, "_type", "dictionary");
                     if (dictionary != null) {
                         const values = Object.values(dictionary);
+                        let allCollapsed = true;
                         for (let i = 0; i < values.length; i++) {
-                            const property = collapseProperty(values, i, collapseFunction);
-                            if (property === Invalid) {
-                                return Invalid;
+                            const property = collapseProperty(values, i, collapseFunction, stack);
+                            if (property == null) {
+                                allCollapsed = false;
                             }
                         }
-                        return values;
+                        return allCollapsed ? (values as T[]) : null;
                     }
                     return null;
                 }
                 default:
-                    return collapseReferenceBlock(block);
+                    return collapseReferenceBlock(block, stack);
             }
         }
+        let allCollapsed = true;
         for (let i = 0; i < block.length; i++) {
-            const property = collapseProperty(block, i, collapseFunction);
-            if (property === Invalid) {
-                return Invalid;
+            const property = collapseProperty(block, i, collapseFunction, stack);
+            if (property == null) {
+                allCollapsed = false;
             }
         }
-        return block;
+        return allCollapsed ? block : null;
     };
 }
 const collapseStringArrayBlock = collapseArrayBlock(collapseStringBlock);
@@ -733,20 +797,16 @@ const collapseStateArrayBlock = collapseArrayBlock(collapseStateBlock);
 const collapseActionArrayBlock = collapseArrayBlock(collapseActionBlock);
 const collapseItemStackArrayBlock = collapseArrayBlock(collapseItemStackBlock);
 
-function collapseDictionaryBlock<T, S extends T>(
-    collapseFunction: (block: T) => S | null | typeof Invalid
-) {
-    return function (block: DictionaryBlock<T>): Record<string, T | S> | null | typeof Invalid {
-        if (!validateDictionaryBlock(block)) {
-            return Invalid;
+function collapseDictionaryBlock<T>(collapseFunction: (block: any, stack: string[]) => T | null) {
+    return function (block: any, stack: string[]): Record<string, T> | null {
+        const errorContainer = { message: "", stack };
+        if (!validateDictionaryBlock(block, errorContainer)) {
+            throw errorContainer;
         }
-        if (block._type == null) {
-            Object.keys(block).forEach(key =>
-                collapseProperty(block as Record<string, T>, key, collapseFunction)
+        if (!("_type" in block)) {
+            Object.keys(block as Record<string, T>).forEach(key =>
+                collapseProperty(block as Record<string, T>, key, collapseFunction, stack)
             );
-            if (Object.values(block).some(v => v === Invalid)) {
-                return Invalid;
-            }
             return block as Record<string, T>;
         }
         switch (block._type) {
@@ -754,19 +814,20 @@ function collapseDictionaryBlock<T, S extends T>(
                 const entries = collapseProperty(
                     block as CreateDictionaryBlock<T>,
                     "entries",
-                    collapseArrayBlock(collapseEntryBlock(collapseFunction))
+                    collapseArrayBlock(collapseEntryBlock(collapseFunction)),
+                    stack
                 );
-                if (entries === Invalid) {
-                    return Invalid;
-                }
                 whitelistProperties(block as CreateDictionaryBlock<T>, "_type", "entries");
-                if (entries != null && entries.every(validateEntryBlock)) {
+                if (
+                    entries != null &&
+                    entries.every(entry => validateEntryBlock(entry, errorContainer))
+                ) {
                     return Object.fromEntries(entries.map(e => [e.key, e.value]));
                 }
                 return null;
             }
             default:
-                return collapseReferenceBlock(block as ReferenceBlock);
+                return collapseReferenceBlock(block, stack);
         }
     };
 }
@@ -777,19 +838,15 @@ const collapseTypeDictionaryBlock = collapseDictionaryBlock(collapseTypeBlock);
 const collapseMethodTypeDictionaryBlock = collapseDictionaryBlock(collapseMethodTypeBlock);
 const collapsePropertyDictionaryBlock = collapseDictionaryBlock(collapsePropertyBlock);
 
-function collapseEntryBlock<T, S extends T>(
-    collapseFunction: (block: T) => S | null | typeof Invalid
-) {
-    return function (block: EntryBlock<T>): EntryBlock<T> | null | typeof Invalid {
-        if (!validateEntryBlock(block)) {
-            return Invalid;
+function collapseEntryBlock<T>(collapseFunction: (block: any, stack: string[]) => T | null) {
+    return function (block: any, stack: string[]): EntryBlock<T> | null {
+        const errorContainer = { message: "", stack };
+        if (!validateEntryBlock(block, errorContainer)) {
+            throw errorContainer;
         }
-        const key = collapseProperty(block, "key", collapseStringBlock);
-        const value = collapseProperty(block, "value", collapseFunction);
-        if (key === Invalid || value === Invalid) {
-            return Invalid;
-        }
-        whitelistProperties(block, "_type", "key", "value");
+        const key = collapseProperty(block, "key", collapseStringBlock, stack);
+        const value = collapseProperty(block, "value", collapseFunction, stack);
+        whitelistProperties(block, "key", "value");
         if (key != null && value != null) {
             return block;
         }
@@ -798,75 +855,220 @@ function collapseEntryBlock<T, S extends T>(
 }
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-function collapseReferenceBlock(block: ReferenceBlock) {
-    if (!validateReferenceBlock(block)) {
-        return Invalid;
+function collapseReferenceBlock(block: any, stack: string[]) {
+    const errorContainer = { message: "", stack };
+    if (!validateReferenceBlock(block, errorContainer)) {
+        throw errorContainer;
     }
     switch (block._type) {
         case "method": {
-            const object = collapseProperty(block, "object", collapseStringBlock);
-            const method = collapseProperty(block, "method", collapseStringBlock);
-            const params = collapseOptionalProperty(block, "params", collapseStateDictionaryBlock);
-            if (object === Invalid || method === Invalid || params === Invalid) {
-                return Invalid;
-            }
+            collapseProperty(block, "object", collapseObjectBlock, stack);
+            collapseProperty(block, "method", collapseStringBlock, stack);
+            collapseOptionalProperty(block, "params", collapseStateDictionaryBlock, stack);
             whitelistProperties(block, "_type", "object", "method", "params");
             return null;
         }
         case "property": {
-            const object = collapseProperty(block, "object", collapseStringBlock);
-            const property = collapseProperty(block, "property", collapseStringBlock);
-            if (object === Invalid || property === Invalid) {
-                return Invalid;
-            }
+            collapseProperty(block, "object", collapseObjectBlock, stack);
+            collapseProperty(block, "property", collapseStringBlock, stack);
             whitelistProperties(block, "_type", "object", "property");
             return null;
         }
-        case "getObject": {
-            const id = collapseProperty(block, "id", collapseStringBlock);
-            if (id === Invalid) {
-                return Invalid;
-            }
+        case "getContext": {
+            collapseProperty(block, "id", collapseStringBlock, stack);
             whitelistProperties(block, "_type", "id");
             return null;
         }
         case "ternary": {
-            const condition = collapseProperty(block, "condition", collapseBooleanBlock);
-            const ifTrue = collapseProperty(block, "true", collapseStateBlock);
-            const ifFalse = collapseProperty(block, "false", collapseStateBlock);
-            if (condition === Invalid || ifTrue === Invalid || ifFalse === Invalid) {
-                return Invalid;
-            }
+            const condition = collapseProperty(block, "condition", collapseBooleanBlock, stack);
+            const ifTrue = collapseProperty(block, "true", collapseStateBlock, stack);
+            const ifFalse = collapseProperty(block, "false", collapseStateBlock, stack);
             whitelistProperties(block, "_type", "condition", "false", "true");
-            if (condition != null && ifTrue != null && ifFalse != null) {
-                // TODO validation for collapsing ternaries?
-                // Ternary blocks should theoretically never be static const though
-                // return condition ? ifTrue : ifFalse;
+            if (condition != null) {
+                return condition ? ifTrue : ifFalse;
             }
             return null;
         }
     }
-    return Invalid;
 }
 
-function collapseNodeActionBlock(block: NodeAction) {
-    if (!validateNodeActionBlock(block)) {
-        return Invalid;
+function collapseActionBlock(block: any, stack: string[]) {
+    const errorContainer = { message: "", stack };
+    if (!validateActionBlock(block, errorContainer)) {
+        throw errorContainer;
     }
-    const cost = collapseOptionalProperty(block, "cost", collapseItemStackDictionaryBlock);
-    const display = collapseProperty(block, "display", collapseStringBlock);
-    const duration = collapseProperty(block, "duration", collapseNumberBlock);
-    const run = collapseProperty(block, "run", collapseActionArrayBlock);
-    const tooltip = collapseOptionalProperty(block, "tooltip", collapseStringBlock);
+    switch (block._type) {
+        case "branch": {
+            const condition = collapseProperty(block, "condition", collapseBooleanBlock, stack);
+            const ifTrue = collapseOptionalProperty(block, "true", collapseActionArrayBlock, stack);
+            const ifFalse = collapseOptionalProperty(
+                block,
+                "false",
+                collapseActionArrayBlock,
+                stack
+            );
+            whitelistProperties(block, "_type", "condition", "true", "false");
+            if (condition != null && ifTrue === block.true && ifFalse === block.false) {
+                return block;
+            }
+            return null;
+        }
+        case "forEach": {
+            const array = collapseProperty(block, "array", collapseStateArrayBlock, stack);
+            const forEach = collapseProperty(block, "forEach", collapseStateArrayBlock, stack);
+            whitelistProperties(block, "_type", "array", "forEach");
+            if (array != null && forEach != null) {
+                return block;
+            }
+            return null;
+        }
+        case "repeat": {
+            const iterations = collapseProperty(block, "iterations", collapseNumberBlock, stack);
+            const run = collapseProperty(block, "run", collapseActionArrayBlock, stack);
+            whitelistProperties(block, "_type", "iterations", "run");
+            if (iterations != null && run != null) {
+                return block;
+            }
+            return null;
+        }
+        case "wait": {
+            const node = collapseOptionalProperty(block, "node", collapseStringBlock, stack);
+            const duration = collapseProperty(block, "duration", collapseNumberBlock, stack);
+            whitelistProperties(block, "_type", "node", "duration");
+            if (node != null && duration != null) {
+                return block;
+            }
+            return null;
+        }
+        case "addItemsToInventory": {
+            const node = collapseProperty(block, "node", collapseStringBlock, stack);
+            const items = collapseProperty(block, "items", collapseItemStackArrayBlock, stack);
+            whitelistProperties(block, "_type", "node", "items");
+            if (node != null && items != null) {
+                return block;
+            }
+            return null;
+        }
+        case "setData": {
+            const object = collapseProperty(block, "object", collapseObjectBlock, stack);
+            const key = collapseProperty(block, "key", collapseStringBlock, stack);
+            const value = collapseProperty(block, "value", collapseStateBlock, stack);
+            whitelistProperties(block, "_type", "object", "key", "value");
+            if (object != null && key != null && value != null) {
+                return block;
+            }
+            return null;
+        }
+        case "addNode": {
+            const nodeType = collapseProperty(block, "nodeType", collapseStringBlock, stack);
+            const pos = collapseProperty(block, "pos", collapsePositionBlock, stack);
+            const data = collapseOptionalProperty(block, "data", collapseStateBlock, stack);
+            whitelistProperties(block, "_type", "nodeType", "pos", "data");
+            if (nodeType != null && pos != null && data === block.data) {
+                return block;
+            }
+            return null;
+        }
+        case "removeNode": {
+            const node = collapseProperty(block, "node", collapseStringBlock, stack);
+            whitelistProperties(block, "_type", "node");
+            if (node != null) {
+                return block;
+            }
+            return null;
+        }
+        case "event": {
+            const event = collapseProperty(block, "event", collapseStringBlock, stack);
+            const data = collapseOptionalProperty(block, "data", collapseStateBlock, stack);
+            whitelistProperties(block, "_type", "event", "data");
+            if (event != null && data === block.data) {
+                return block;
+            }
+            return null;
+        }
+        case "error": {
+            const message = collapseProperty(block, "message", collapseStringBlock, stack);
+            whitelistProperties(block, "_type", "message");
+            if (message != null) {
+                return block;
+            }
+            return null;
+        }
+        case "@return": {
+            const value = collapseOptionalProperty(block, "value", collapseStateBlock, stack);
+            whitelistProperties(block, "_type", "value");
+            if (value === block.value) {
+                return block;
+            }
+            return null;
+        }
+        case "@break":
+            whitelistProperties(block, "_type");
+            break;
+        default:
+            collapseReferenceBlock(block, stack);
+            break;
+    }
+    return null;
+}
+
+function collapseInventoryBlock(block: any, stack: string[]): Inventory | null {
+    const errorContainer = { message: "", stack };
+    if (!validateInventoryBlock(block, errorContainer)) {
+        throw errorContainer;
+    }
+    const slots = collapseProperty(block, "slots", collapseNumberBlock, stack);
+    const canPlayerExtract = collapseOptionalProperty(
+        block,
+        "canPlayerExtract",
+        collapseBooleanBlock,
+        stack
+    );
+    const canPlayerInsert = collapseOptionalProperty(
+        block,
+        "canPlayerInsert",
+        collapseBooleanBlock,
+        stack
+    );
+    whitelistProperties(block, "slots", "canPlayerExtract", "canPlayerInsert");
     if (
-        cost === Invalid ||
-        display === Invalid ||
-        duration === Invalid ||
-        run === Invalid ||
-        tooltip === Invalid
+        slots != null &&
+        canPlayerExtract === block.canPlayerExtract &&
+        canPlayerInsert === block.canPlayerInsert
     ) {
-        return Invalid;
+        return block;
     }
+    return null;
+}
+
+function collapseItemStackBlock(block: any, stack: string[]): ItemStackBlock | null {
+    const errorContainer = { message: "", stack };
+    if (!validateItemStackBlock(block, errorContainer)) {
+        throw errorContainer;
+    }
+    if (typeof block === "object" && "item" in block && "quantity" in block) {
+        const item = collapseProperty(block, "item", collapseStringBlock, stack);
+        const quantity = collapseProperty(block, "quantity", collapseNumberBlock, stack);
+        whitelistProperties(block, "item", "quantity");
+        if (item != null && quantity != null) {
+            return block;
+        }
+        return null;
+    } else {
+        return collapseReferenceBlock(block, stack);
+    }
+}
+
+function collapseNodeActionBlock(block: any, stack: string[]) {
+    const errorContainer = { message: "", stack };
+    if (!validateNodeActionBlock(block, errorContainer)) {
+        throw errorContainer;
+    }
+    const cost = collapseOptionalProperty(block, "cost", collapseItemStackDictionaryBlock, stack);
+    const display = collapseProperty(block, "display", collapseStringBlock, stack);
+    const duration = collapseProperty(block, "duration", collapseNumberBlock, stack);
+    const run = collapseProperty(block, "run", collapseActionArrayBlock, stack);
+    const tooltip = collapseOptionalProperty(block, "tooltip", collapseStringBlock, stack);
     whitelistProperties(block, "cost", "display", "duration", "run", "tooltip");
     if (
         display != null &&
@@ -880,263 +1082,61 @@ function collapseNodeActionBlock(block: NodeAction) {
     return null;
 }
 
-function collapseActionBlock(block: ActionBlock) {
-    if (!validateActionBlock(block)) {
-        return Invalid;
-    }
-    switch (block._type) {
-        case "branch": {
-            const condition = collapseProperty(block, "condition", collapseBooleanBlock);
-            const ifTrue = collapseOptionalProperty(block, "true", collapseActionArrayBlock);
-            const ifFalse = collapseOptionalProperty(block, "false", collapseActionArrayBlock);
-            if (condition === Invalid || ifTrue === Invalid || ifFalse === Invalid) {
-                return Invalid;
-            }
-            whitelistProperties(block, "_type", "condition", "true", "false");
-            if (condition != null && ifTrue === block.true && ifFalse === block.false) {
-                return block;
-            }
-            return null;
-        }
-        case "forEach": {
-            const array = collapseProperty(block, "array", collapseStateArrayBlock);
-            const forEach = collapseProperty(block, "forEach", collapseStateArrayBlock);
-            if (array === Invalid || forEach === Invalid) {
-                return Invalid;
-            }
-            whitelistProperties(block, "_type", "array", "forEach");
-            if (array != null && forEach != null) {
-                return block;
-            }
-            return null;
-        }
-        case "repeat": {
-            const iterations = collapseProperty(block, "iterations", collapseNumberBlock);
-            const run = collapseProperty(block, "run", collapseActionArrayBlock);
-            if (iterations === Invalid || run === Invalid) {
-                return Invalid;
-            }
-            whitelistProperties(block, "_type", "iterations", "run");
-            if (iterations != null && run != null) {
-                return block;
-            }
-            return null;
-        }
-        case "wait": {
-            const node = collapseOptionalProperty(block, "node", collapseStringBlock);
-            const duration = collapseProperty(block, "duration", collapseNumberBlock);
-            if (node === Invalid || duration === Invalid) {
-                return Invalid;
-            }
-            whitelistProperties(block, "_type", "node", "duration");
-            if (node != null && duration != null) {
-                return block;
-            }
-            return null;
-        }
-        case "addItemsToInventory": {
-            const node = collapseProperty(block, "node", collapseStringBlock);
-            const items = collapseProperty(block, "items", collapseItemStackArrayBlock);
-            if (node === Invalid || items === Invalid) {
-                return Invalid;
-            }
-            whitelistProperties(block, "_type", "node", "items");
-            if (node != null && items != null) {
-                return block;
-            }
-            return null;
-        }
-        case "setData": {
-            const object = collapseProperty(block, "object", collapseStringBlock);
-            const key = collapseProperty(block, "key", collapseStringBlock);
-            const value = collapseProperty(block, "value", collapseStateBlock);
-            if (object === Invalid || key === Invalid || value === Invalid) {
-                return Invalid;
-            }
-            whitelistProperties(block, "_type", "object", "key", "value");
-            if (object != null && key != null && value != null) {
-                return block;
-            }
-            return null;
-        }
-        case "addNode": {
-            const nodeType = collapseProperty(block, "nodeType", collapseStringBlock);
-            const pos = collapseProperty(block, "pos", collapsePositionBlock);
-            const data = collapseOptionalProperty(block, "data", collapseStateBlock);
-            if (nodeType === Invalid || pos === Invalid || data === Invalid) {
-                return Invalid;
-            }
-            whitelistProperties(block, "_type", "nodeType", "pos", "data");
-            if (nodeType != null && pos != null && data === block.data) {
-                return block;
-            }
-            return null;
-        }
-        case "removeNode": {
-            const node = collapseProperty(block, "node", collapseStringBlock);
-            if (node === Invalid) {
-                return Invalid;
-            }
-            whitelistProperties(block, "_type", "node");
-            if (node != null) {
-                return block;
-            }
-            return null;
-        }
-        case "event": {
-            const event = collapseProperty(block, "event", collapseStringBlock);
-            const data = collapseOptionalProperty(block, "data", collapseStateBlock);
-            if (event === Invalid || data === Invalid) {
-                return Invalid;
-            }
-            whitelistProperties(block, "_type", "event", "data");
-            if (event != null && data === block.data) {
-                return block;
-            }
-            return null;
-        }
-        case "error": {
-            const message = collapseProperty(block, "message", collapseStringBlock);
-            if (message === Invalid) {
-                return Invalid;
-            }
-            whitelistProperties(block, "_type", "message");
-            if (message != null) {
-                return block;
-            }
-            return null;
-        }
-        case "@return": {
-            const value = collapseOptionalProperty(block, "value", collapseStateBlock);
-            if (value === Invalid) {
-                return Invalid;
-            }
-            whitelistProperties(block, "_type", "value");
-            if (value === block.value) {
-                return block;
-            }
-            return null;
-        }
-        case "@break":
-            whitelistProperties(block, "_type");
-            break;
-        default:
-            collapseReferenceBlock(block);
-            break;
-    }
-    return null;
-}
-
-function collapseInventoryBlock(block: Inventory): Inventory | null | typeof Invalid {
-    if (!validateInventoryBlock(block)) {
-        return Invalid;
-    }
-    const slots = collapseProperty(block, "slots", collapseNumberBlock);
-    const canPlayerExtract = collapseOptionalProperty(
-        block,
-        "canPlayerExtract",
-        collapseBooleanBlock
-    );
-    const canPlayerInsert = collapseOptionalProperty(
-        block,
-        "canPlayerInsert",
-        collapseBooleanBlock
-    );
-    if (slots === Invalid || canPlayerExtract === Invalid || canPlayerInsert === Invalid) {
-        return Invalid;
-    }
-    whitelistProperties(block, "slots", "canPlayerExtract", "canPlayerInsert");
-    if (
-        slots != null &&
-        canPlayerExtract === block.canPlayerExtract &&
-        canPlayerInsert === block.canPlayerInsert
-    ) {
-        return block;
-    }
-    return null;
-}
-
-function collapseItemStackBlock(block: ItemStackBlock): ItemStackBlock | null | typeof Invalid {
-    if (!validateItemStackBlock(block)) {
-        return Invalid;
-    }
-    if (typeof block === "object" && "item" in block && "quantity" in block) {
-        const item = collapseProperty(block, "item", collapseStringBlock);
-        const quantity = collapseProperty(block, "quantity", collapseNumberBlock);
-        if (item === Invalid || quantity === Invalid) {
-            return Invalid;
-        }
-        whitelistProperties(block, "item", "quantity");
-        if (item != null && quantity != null) {
-            return block;
-        }
-        return null;
-    } else {
-        return collapseReferenceBlock(block);
-    }
-}
-
-function collapsePositionBlock(block: PositionBlock): PositionBlock | null | typeof Invalid {
-    if (!validatePositionBlock(block)) {
-        return Invalid;
+function collapsePositionBlock(block: any, stack: string[]): PositionBlock | null {
+    const errorContainer = { message: "", stack };
+    if (!validatePositionBlock(block, errorContainer)) {
+        throw errorContainer;
     }
     if (typeof block === "object" && "x" in block && "y" in block) {
-        const x = collapseProperty(block, "x", collapseNumberBlock);
-        const y = collapseProperty(block, "y", collapseNumberBlock);
-        if (x === Invalid || y === Invalid) {
-            return Invalid;
-        }
+        const x = collapseProperty(block, "x", collapseNumberBlock, stack);
+        const y = collapseProperty(block, "y", collapseNumberBlock, stack);
         whitelistProperties(block, "x", "y");
         if (x != null && y != null) {
             return block;
         }
         return null;
     } else {
-        return collapseReferenceBlock(block);
+        return collapseReferenceBlock(block, stack);
     }
 }
 
-function collapseSizeBlock(block: SizeBlock): SizeBlock | null | typeof Invalid {
-    if (!validateSizeBlock(block)) {
-        return Invalid;
+function collapseSizeBlock(block: any, stack: string[]): SizeBlock | null {
+    const errorContainer = { message: "", stack };
+    if (!validateSizeBlock(block, errorContainer)) {
+        throw errorContainer;
     }
-    if (validateNumberBlock(block as NumberBlock)) {
-        return collapseNumberBlock(block as NumberBlock);
+    if (validateNumberBlock(block, errorContainer)) {
+        return collapseNumberBlock(block, stack);
     }
     if (typeof block === "object" && "width" in block && "height" in block) {
-        const width = collapseProperty(block, "width", collapseNumberBlock);
-        const height = collapseProperty(block, "height", collapseNumberBlock);
-        if (width === Invalid || height === Invalid) {
-            return Invalid;
-        }
+        const width = collapseProperty(block, "width", collapseNumberBlock, stack);
+        const height = collapseProperty(block, "height", collapseNumberBlock, stack);
         whitelistProperties(block, "width", "height");
         if (width != null && height != null) {
             return block;
         }
         return null;
     } else {
-        return collapseReferenceBlock(block as ReferenceBlock);
+        return collapseReferenceBlock(block, stack);
     }
 }
 
-function isCollapsedState(block: StateBlock): boolean {
+function isCollapsedState(block: any): boolean {
     switch (typeof block) {
         case "boolean":
         case "number":
         case "string":
             return true;
         case "object":
-            if ("_type" in block) {
-                return false;
-            }
-            break;
+            return !("_type" in block);
     }
     return false;
 }
 
-function collapseTypeBlock(block: TypeBlock): TypeBlock | null | typeof Invalid {
-    if (!validateTypeBlock(block)) {
-        return Invalid;
+function collapseTypeBlock(block: any, stack: string[]): TypeBlock | null {
+    const errorContainer = { message: "", stack };
+    if (!validateTypeBlock(block, errorContainer)) {
+        throw errorContainer;
     }
     if (typeof block === "string") {
         return block;
@@ -1144,12 +1144,14 @@ function collapseTypeBlock(block: TypeBlock): TypeBlock | null | typeof Invalid 
 
     switch (block._type) {
         case "dictionary": {
-            const keyType = collapseProperty(block, "keyType", collapseTypeBlock);
-            const valueType = collapseProperty(block, "valueType", collapseTypeBlock);
-            const internal = collapseOptionalProperty(block, "internal", collapseBooleanBlock);
-            if (keyType === Invalid || valueType === Invalid || internal === Invalid) {
-                return Invalid;
-            }
+            const keyType = collapseProperty(block, "keyType", collapseTypeBlock, stack);
+            const valueType = collapseProperty(block, "valueType", collapseTypeBlock, stack);
+            const internal = collapseOptionalProperty(
+                block,
+                "internal",
+                collapseBooleanBlock,
+                stack
+            );
             whitelistProperties(block, "_type", "keyType", "valueType", "internal");
             if (keyType != null && valueType != null && block.internal === internal) {
                 return block;
@@ -1157,11 +1159,13 @@ function collapseTypeBlock(block: TypeBlock): TypeBlock | null | typeof Invalid 
             return null;
         }
         case "array": {
-            const elementType = collapseProperty(block, "elementType", collapseTypeBlock);
-            const internal = collapseOptionalProperty(block, "internal", collapseBooleanBlock);
-            if (elementType === Invalid || internal === Invalid) {
-                return Invalid;
-            }
+            const elementType = collapseProperty(block, "elementType", collapseTypeBlock, stack);
+            const internal = collapseOptionalProperty(
+                block,
+                "internal",
+                collapseBooleanBlock,
+                stack
+            );
             whitelistProperties(block, "_type", "elementType", "internal");
             if (elementType != null && block.internal === internal) {
                 return block;
@@ -1169,11 +1173,18 @@ function collapseTypeBlock(block: TypeBlock): TypeBlock | null | typeof Invalid 
             return null;
         }
         case "object": {
-            const properties = collapseProperty(block, "properties", collapseTypeDictionaryBlock);
-            const internal = collapseOptionalProperty(block, "internal", collapseBooleanBlock);
-            if (properties === Invalid || internal === Invalid) {
-                return Invalid;
-            }
+            const properties = collapseProperty(
+                block,
+                "properties",
+                collapseTypeDictionaryBlock,
+                stack
+            );
+            const internal = collapseOptionalProperty(
+                block,
+                "internal",
+                collapseBooleanBlock,
+                stack
+            );
             whitelistProperties(block, "_type", "properties", "internal");
             if (properties != null && block.internal === internal) {
                 return block;
@@ -1181,11 +1192,18 @@ function collapseTypeBlock(block: TypeBlock): TypeBlock | null | typeof Invalid 
             return null;
         }
         case "number": {
-            const defaultValue = collapseOptionalProperty(block, "default", collapseNumberBlock);
-            const internal = collapseOptionalProperty(block, "internal", collapseBooleanBlock);
-            if (defaultValue === Invalid || internal === Invalid) {
-                return Invalid;
-            }
+            const defaultValue = collapseOptionalProperty(
+                block,
+                "default",
+                collapseNumberBlock,
+                stack
+            );
+            const internal = collapseOptionalProperty(
+                block,
+                "internal",
+                collapseBooleanBlock,
+                stack
+            );
             whitelistProperties(block, "_type", "default", "internal");
             if (defaultValue == block.default && block.internal === internal) {
                 return block;
@@ -1193,11 +1211,18 @@ function collapseTypeBlock(block: TypeBlock): TypeBlock | null | typeof Invalid 
             return null;
         }
         case "boolean": {
-            const defaultValue = collapseOptionalProperty(block, "default", collapseBooleanBlock);
-            const internal = collapseOptionalProperty(block, "internal", collapseBooleanBlock);
-            if (defaultValue === Invalid || internal === Invalid) {
-                return Invalid;
-            }
+            const defaultValue = collapseOptionalProperty(
+                block,
+                "default",
+                collapseBooleanBlock,
+                stack
+            );
+            const internal = collapseOptionalProperty(
+                block,
+                "internal",
+                collapseBooleanBlock,
+                stack
+            );
             whitelistProperties(block, "_type", "default", "internal");
             if (defaultValue == block.default && block.internal === internal) {
                 return block;
@@ -1205,11 +1230,18 @@ function collapseTypeBlock(block: TypeBlock): TypeBlock | null | typeof Invalid 
             return null;
         }
         case "string": {
-            const defaultValue = collapseOptionalProperty(block, "default", collapseStringBlock);
-            const internal = collapseOptionalProperty(block, "internal", collapseBooleanBlock);
-            if (defaultValue === Invalid || internal === Invalid) {
-                return Invalid;
-            }
+            const defaultValue = collapseOptionalProperty(
+                block,
+                "default",
+                collapseStringBlock,
+                stack
+            );
+            const internal = collapseOptionalProperty(
+                block,
+                "internal",
+                collapseBooleanBlock,
+                stack
+            );
             whitelistProperties(block, "_type", "default", "internal");
             if (defaultValue == block.default && block.internal === internal) {
                 return block;
@@ -1217,11 +1249,13 @@ function collapseTypeBlock(block: TypeBlock): TypeBlock | null | typeof Invalid 
             return null;
         }
         case "id": {
-            const of = collapseProperty(block, "of", collapseStringBlock);
-            const internal = collapseOptionalProperty(block, "internal", collapseBooleanBlock);
-            if (of === Invalid || internal === Invalid) {
-                return Invalid;
-            }
+            const of = collapseProperty(block, "of", collapseStringBlock, stack);
+            const internal = collapseOptionalProperty(
+                block,
+                "internal",
+                collapseBooleanBlock,
+                stack
+            );
             whitelistProperties(block, "_type", "of", "internal");
             if (of != null && block.internal === internal) {
                 return block;
@@ -1229,10 +1263,12 @@ function collapseTypeBlock(block: TypeBlock): TypeBlock | null | typeof Invalid 
             return null;
         }
         case "itemStack": {
-            const internal = collapseOptionalProperty(block, "internal", collapseBooleanBlock);
-            if (internal === Invalid) {
-                return Invalid;
-            }
+            const internal = collapseOptionalProperty(
+                block,
+                "internal",
+                collapseBooleanBlock,
+                stack
+            );
             whitelistProperties(block, "_type", "internal");
             if (block.internal === internal) {
                 return block;
@@ -1240,10 +1276,12 @@ function collapseTypeBlock(block: TypeBlock): TypeBlock | null | typeof Invalid 
             return null;
         }
         case "action": {
-            const internal = collapseOptionalProperty(block, "internal", collapseBooleanBlock);
-            if (internal === Invalid) {
-                return Invalid;
-            }
+            const internal = collapseOptionalProperty(
+                block,
+                "internal",
+                collapseBooleanBlock,
+                stack
+            );
             whitelistProperties(block, "_type", "internal");
             if (block.internal === internal) {
                 return block;
@@ -1251,70 +1289,70 @@ function collapseTypeBlock(block: TypeBlock): TypeBlock | null | typeof Invalid 
             return null;
         }
     }
-    return Invalid;
 }
 
-function collapseMethodTypeBlock(block: MethodTypeBlock) {
-    if (!validateMethodTypeBlock(block)) {
-        return Invalid;
+function collapseMethodTypeBlock(block: any, stack: string[]): MethodTypeBlock {
+    const errorContainer = { message: "", stack };
+    if (!validateMethodTypeBlock(block, errorContainer)) {
+        throw errorContainer;
     }
-    const run = collapseProperty(block, "run", collapseActionArrayBlock);
-    const params = collapseOptionalProperty(block, "params", collapseStateDictionaryBlock);
-    const returns = collapseOptionalProperty(block, "returns", collapseTypeBlock);
-    if (run === Invalid || params === Invalid || returns === Invalid) {
-        return Invalid;
-    }
+    const run = collapseProperty(block, "run", collapseActionArrayBlock, stack);
+    const params = collapseOptionalProperty(block, "params", collapseStateDictionaryBlock, stack);
+    const returns = collapseOptionalProperty(block, "returns", collapseTypeBlock, stack);
     whitelistProperties(block, "run", "params", "returns");
     if (run != null && block.params === params && block.returns === returns) {
         return block;
     }
-    return Invalid;
+    throw { message: "could not resolve method block", stack };
 }
 
-function collapsePropertyBlock(block: TypeBlock & { value: StateBlock }) {
-    if (!validatePropertyBlock(block)) {
-        return Invalid;
+function collapsePropertyBlock(block: any, stack: string[]) {
+    const errorContainer = { message: "", stack };
+    if (!validatePropertyBlock(block, errorContainer)) {
+        throw errorContainer;
     }
-    const value = collapseStateBlock(block.value);
-    const state = collapseTypeBlock(block);
-    if (value === Invalid || value == null || state === Invalid) {
-        return Invalid;
-    }
+    const value = collapseStateBlock(block.value, stack);
+    const any = collapseTypeBlock(block, stack);
     block.value = value;
-    if (state != null) {
+    if (any != null) {
         return block;
     }
     return null;
 }
 
-function collapseBlockByType(type: TypeBlock) {
-    return function (block: StateBlock): StateBlock | null | typeof Invalid {
-        if (!validateTypeBlock(type)) {
-            return Invalid;
+function collapseBlockByType(type: any) {
+    return function (block: any, stack: string[]): any | null {
+        const errorContainer = { message: "", stack };
+        if (!validateTypeBlock(block, errorContainer)) {
+            throw errorContainer;
         }
         if (typeof type === "string") {
-            return typeof block === "string" ? block : Invalid;
+            if (typeof block === "string") {
+                return block;
+            }
+            throw { message: "expected object ID", stack };
         }
         if (block == null) {
             if ("default" in type) {
                 block = type.default;
             } else {
-                return Invalid;
+                throw { message: "required property not provided", stack };
             }
         }
         switch (type._type) {
             case "dictionary":
-                return collapseDictionaryBlock(collapseBlockByType(type.valueType))(block);
+                return collapseDictionaryBlock(collapseBlockByType(type.valueType))(block, stack);
             case "array":
-                return collapseArrayBlock(collapseBlockByType(type.elementType))(block);
+                return collapseArrayBlock(collapseBlockByType(type.elementType))(block, stack);
             case "object":
                 const properties = collapseProperty(
                     type,
                     "properties",
-                    collapseTypeDictionaryBlock
+                    collapseTypeDictionaryBlock,
+                    stack
                 );
-                if (properties === Invalid || properties == null) {
-                    return Invalid;
+                if (properties == null) {
+                    throw { message: "could not resolve expected properties", stack };
                 }
                 const propertyKeys = Object.keys(properties);
                 whitelistProperties(block, ...propertyKeys);
@@ -1322,26 +1360,26 @@ function collapseBlockByType(type: TypeBlock) {
                     const property = collapseProperty(
                         block,
                         propertyKeys[i],
-                        collapseBlockByType(properties[propertyKeys[i]])
+                        collapseBlockByType(properties[propertyKeys[i]]),
+                        stack
                     );
-                    if (property === Invalid || property == null) {
-                        return Invalid;
+                    if (property == null) {
+                        throw { message: `could not resolve property '${propertyKeys[i]}'`, stack };
                     }
                 }
                 return block;
             case "number":
-                return collapseNumberBlock(block);
+                return collapseNumberBlock(block, stack);
             case "boolean":
-                return collapseBooleanBlock(block);
+                return collapseBooleanBlock(block, stack);
             case "string":
-                return collapseStringBlock(block);
+                return collapseStringBlock(block, stack);
             case "id":
-                return collapseStringBlock(block);
+                return collapseStringBlock(block, stack);
             case "itemStack":
-                return collapseItemStackBlock(block);
+                return collapseItemStackBlock(block, stack);
             case "action":
-                return collapseNodeActionBlock(block);
+                return collapseNodeActionBlock(block, stack);
         }
-        return Invalid;
     };
 }

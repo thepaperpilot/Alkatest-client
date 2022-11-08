@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import type {
     ReferenceBlock,
     DictionaryBlock,
@@ -14,236 +15,351 @@ import type {
     NodeAction,
     TypeBlock,
     MethodTypeBlock,
-    StateBlock
+    ObjectBlock
 } from "alkatest-common/types";
 
-export function validateReferenceBlock(block: ReferenceBlock) {
-    if (typeof block !== "object" || block == null) {
+export function validateBlock(
+    block: any,
+    errorContainer: { message: string },
+    skipTypeCheck = false
+): block is Record<string, unknown> {
+    if (block == null) {
+        errorContainer.message = "block is null";
+        return false;
+    }
+    if (typeof block !== "object") {
+        errorContainer.message = "block is not object";
+        return false;
+    }
+    if (skipTypeCheck) {
+        return true;
+    }
+    if (!("_type" in block)) {
+        errorContainer.message = "block is missing '_type' property";
+        return false;
+    }
+    if (typeof block._type !== "string") {
+        errorContainer.message = `block has non-string '_type' property`;
+        return false;
+    }
+    return true;
+}
+
+export function validateProperties<T extends string>(
+    block: object,
+    errorContainer: { message: string },
+    ...properties: T[]
+): block is {
+    [x in T]: x extends T ? unknown : never;
+} {
+    for (const prop in properties) {
+        if (!(prop in block)) {
+            errorContainer.message = `block is missing '${prop}' property`;
+            return false;
+        }
+    }
+    return true;
+}
+
+export function validateReferenceBlock(
+    block: any,
+    errorContainer: { message: string }
+): block is ReferenceBlock {
+    if (!validateBlock(block, errorContainer)) {
         return false;
     }
     switch (block._type) {
         case "method":
-            return "object" in block && "method" in block;
+            return validateProperties(block, errorContainer, "object", "method");
         case "property":
-            return "object" in block && "property" in block;
-        case "getObject":
-            return "id" in block;
+            return validateProperties(block, errorContainer, "object", "property");
+        case "getContext":
+            return validateProperties(block, errorContainer, "id");
         case "ternary":
-            return "condition" in block && "true" in block && "false" in block;
+            return validateProperties(block, errorContainer, "condition", "true", "false");
         default:
+            errorContainer.message = `block has unknown type '${block._type}'`;
             return false;
     }
 }
 
-export function validateDictionaryBlock<T>(block: DictionaryBlock<T>): boolean {
-    if (typeof block !== "object" || block == null) {
+export function validateDictionaryBlock(
+    block: any,
+    errorContainer: { message: string }
+): block is DictionaryBlock | ReferenceBlock {
+    if (!validateBlock(block, errorContainer, true)) {
         return false;
     }
     if (block._type == null) {
-        return (Object.values(block) as T[]).every(value => value != null);
+        const nullKey = Object.keys(block).find(key => block[key] == null);
+        if (nullKey == null) {
+            return true;
+        }
+        errorContainer.message = `dictionary block has null value for key '${nullKey}`;
+        return false;
     }
     if (typeof block._type === "string") {
         switch (block._type) {
             case "createDictionary":
-                return "entries" in block;
+                return validateProperties(block, errorContainer, "entries");
             default:
-                return validateReferenceBlock(block as ReferenceBlock);
+                return validateReferenceBlock(block, errorContainer);
         }
     }
     return false;
 }
 
-export function validateEntryBlock<T>(block: EntryBlock<T>): boolean {
-    if (typeof block !== "object" || block == null) {
+export function validateEntryBlock(
+    block: any,
+    errorContainer: { message: string }
+): block is EntryBlock {
+    if (!validateBlock(block, errorContainer, true)) {
         return false;
     }
-    if (block._type !== "entry") {
-        return false;
-    }
-    return "key" in block && "value" in block;
+    return validateProperties(block, errorContainer, "key", "value");
 }
 
-export function validateArrayBlock<T>(block: ArrayBlock<T>): boolean {
-    if (typeof block !== "object" || block == null) {
+export function validateArrayBlock(
+    block: any,
+    errorContainer: { message: string }
+): block is ArrayBlock | ReferenceBlock {
+    if (Array.isArray(block)) {
+        const nullIndex = block.findIndex(value => value == null);
+        if (nullIndex == -1) {
+            return true;
+        }
+        errorContainer.message = `array block has null value for index '${nullIndex}`;
+        return false;
+    }
+    if (!validateBlock(block, errorContainer)) {
+        return false;
+    }
+    switch (block._type) {
+        case "filter":
+            return validateProperties(block, errorContainer, "array", "condition");
+        case "map":
+            return validateProperties(block, errorContainer, "array", "value");
+        case "keys":
+            return validateProperties(block, errorContainer, "dictionary");
+        case "values":
+            return validateProperties(block, errorContainer, "dictionary");
+        default:
+            return validateReferenceBlock(block, errorContainer);
+    }
+}
+
+export function validateObjectBlock(
+    block: any,
+    errorContainer: { message: string }
+): block is ObjectBlock {
+    if (!validateBlock(block, errorContainer, true)) {
         return false;
     }
     if ("_type" in block) {
-        switch (block._type) {
-            case "filter":
-                return "array" in block && "condition" in block;
-            case "map":
-                return "array" in block && "value" in block;
-            case "keys":
-                return "dictionary" in block;
-            case "values":
-                return "dictionary" in block;
-            default:
-                return validateReferenceBlock(block);
-        }
+        return validateReferenceBlock(block, errorContainer);
     }
-    return block.every(value => value != null);
+    return true;
 }
 
-export function validateStringBlock(block: StringBlock): boolean {
+export function validateStringBlock(
+    block: any,
+    errorContainer: { message: string }
+): block is StringBlock | ReferenceBlock {
     if (typeof block === "string") {
         return true;
     }
-    if (typeof block !== "object" || block == null) {
+    if (!validateBlock(block, errorContainer)) {
         return false;
     }
     switch (block._type) {
         case "concat":
-            return "operands" in block;
+            return validateProperties(block, errorContainer, "operands");
         default:
-            return validateReferenceBlock(block);
+            return validateReferenceBlock(block, errorContainer);
     }
 }
 
-export function validateNumberBlock(block: NumberBlock): boolean {
+export function validateNumberBlock(
+    block: any,
+    errorContainer: { message: string }
+): block is NumberBlock | ReferenceBlock {
     if (typeof block === "number") {
         return true;
     }
-    if (typeof block !== "object" || block == null) {
+    if (!validateBlock(block, errorContainer)) {
         return false;
     }
     switch (block._type) {
         case "addition":
-            return "operands" in block;
+            return validateProperties(block, errorContainer, "operands");
         case "subtraction":
-            return "operands" in block;
+            return validateProperties(block, errorContainer, "operands");
         case "random":
-            return "min" in block && "max" in block;
+            return validateProperties(block, errorContainer, "min", "max");
         case "randomInt":
-            return "min" in block && "max" in block;
+            return validateProperties(block, errorContainer, "min", "max");
         default:
-            return validateReferenceBlock(block);
+            return validateReferenceBlock(block, errorContainer);
     }
 }
 
-export function validateBooleanBlock(block: BooleanBlock): boolean {
+export function validateBooleanBlock(
+    block: any,
+    errorContainer: { message: string }
+): block is BooleanBlock | ReferenceBlock {
     if (typeof block === "boolean") {
         return true;
     }
-    if (typeof block !== "object" || block == null) {
+    if (!validateBlock(block, errorContainer)) {
         return false;
     }
     switch (block._type) {
         case "equals":
-            return "operands" in block;
+            return validateProperties(block, errorContainer, "operands");
         case "notEquals":
-            return "operands" in block;
+            return validateProperties(block, errorContainer, "operands");
         case "greaterThan":
-            return "operands" in block;
+            return validateProperties(block, errorContainer, "operands");
         case "greaterThanOrEqual":
-            return "operands" in block;
+            return validateProperties(block, errorContainer, "operands");
         case "lessThan":
-            return "operands" in block;
+            return validateProperties(block, errorContainer, "operands");
         case "lessThanOrEqual":
-            return "operands" in block;
-        case "objectExists":
-            return "operands" in block;
+            return validateProperties(block, errorContainer, "operands");
+        case "contextExists":
+            return validateProperties(block, errorContainer, "object");
         case "propertyExists":
-            return "operands" in block && "property" in block;
+            return validateProperties(block, errorContainer, "object", "property");
+        case "all":
+            return validateProperties(block, errorContainer, "operands");
+        case "any":
+            return validateProperties(block, errorContainer, "operands");
+        case "none":
+            return validateProperties(block, errorContainer, "operands");
         default:
-            return validateReferenceBlock(block);
+            return validateReferenceBlock(block, errorContainer);
     }
 }
 
-export function validateActionBlock(block: ActionBlock): boolean {
-    if (typeof block !== "object" || block == null) {
+export function validateActionBlock(
+    block: any,
+    errorContainer: { message: string }
+): block is ActionBlock | ReferenceBlock {
+    if (!validateBlock(block, errorContainer)) {
         return false;
     }
     switch (block._type) {
         case "branch":
-            return "condition" in block;
+            return validateProperties(block, errorContainer, "condition");
         case "forEach":
-            return "array" in block && "forEach" in block;
+            return validateProperties(block, errorContainer, "array", "forEach");
         case "repeat":
-            return "iterations" in block && "run" in block;
+            return validateProperties(block, errorContainer, "iterations", "run");
         case "wait":
-            return "duration" in block;
+            return validateProperties(block, errorContainer, "duration");
         case "addItemsToInventory":
-            return "node" in block && "items" in block;
+            return validateProperties(block, errorContainer, "node", "items");
         case "setData":
-            return "object" in block && "key" in block && "value" in block;
+            return validateProperties(block, errorContainer, "object", "key", "value");
         case "addNode":
-            return "nodeType" in block && "pos" in block;
+            return validateProperties(block, errorContainer, "nodeType", "pos");
         case "removeNode":
-            return "node" in block;
+            return validateProperties(block, errorContainer, "node");
         case "event":
-            return "event" in block;
+            return validateProperties(block, errorContainer, "event");
         case "error":
-            return "message" in block;
+            return validateProperties(block, errorContainer, "message");
         case "@return":
             return true;
         case "@break":
             return true;
         default:
-            return validateReferenceBlock(block);
+            return validateReferenceBlock(block, errorContainer);
     }
 }
 
-export function validatePositionBlock(block: PositionBlock): boolean {
-    if (typeof block !== "object" || block == null) {
+export function validatePositionBlock(
+    block: any,
+    errorContainer: { message: string }
+): block is PositionBlock | ReferenceBlock {
+    if (!validateBlock(block, errorContainer, true)) {
         return false;
     }
-    if ("type" in block) {
-        return validateReferenceBlock(block);
+    if ("_type" in block) {
+        return validateReferenceBlock(block, errorContainer);
     }
-    return "x" in block && "y" in block;
+    return validateProperties(block, errorContainer, "x", "y");
 }
 
-export function validateSizeBlock(block: SizeBlock): boolean {
+export function validateSizeBlock(
+    block: any,
+    errorContainer: { message: string }
+): block is SizeBlock | ReferenceBlock {
     if (typeof block === "number") {
         return true;
     }
-    if (typeof block !== "object" || block == null) {
+    if (!validateBlock(block, errorContainer, true)) {
         return false;
     }
-    if ("type" in block) {
-        return validateNumberBlock(block) || validateReferenceBlock(block as ReferenceBlock);
+    if ("_type" in block) {
+        return (
+            validateNumberBlock(block, errorContainer) ||
+            validateReferenceBlock(block, errorContainer)
+        );
     }
-    return "width" in block && "height" in block;
+    return validateProperties(block, errorContainer, "width", "height");
 }
 
-export function validateInventoryBlock(block: Inventory): boolean {
-    if (typeof block !== "object" || block == null) {
+export function validateInventoryBlock(
+    block: any,
+    errorContainer: { message: string }
+): block is Inventory {
+    if (!validateBlock(block, errorContainer, true)) {
         return false;
     }
-    return "slots" in block;
+    return validateProperties(block, errorContainer, "slots");
 }
 
-export function validateItemStackBlock(block: ItemStackBlock): boolean {
-    if (typeof block !== "object" || block == null) {
+export function validateItemStackBlock(
+    block: any,
+    errorContainer: { message: string }
+): block is ItemStackBlock | ReferenceBlock {
+    if (!validateBlock(block, errorContainer, true)) {
         return false;
     }
-    if ("item" in block && "quantity" in block) {
-        return true;
+    if ("_type" in block) {
+        return validateReferenceBlock(block, errorContainer);
     }
-    return validateReferenceBlock(block);
+    return validateProperties(block, errorContainer, "item", "quantity");
 }
 
-export function validateNodeActionBlock(block: NodeAction): boolean {
-    if (typeof block !== "object" || block == null) {
+export function validateNodeActionBlock(
+    block: any,
+    errorContainer: { message: string }
+): block is NodeAction {
+    if (!validateBlock(block, errorContainer, true)) {
         return false;
     }
-    return "display" in block && "duration" in block && "run" in block;
+    return validateProperties(block, errorContainer, "display", "duration", "run");
 }
 
-export function validateTypeBlock(block: TypeBlock): boolean {
+export function validateTypeBlock(
+    block: any,
+    errorContainer: { message: string }
+): block is TypeBlock {
     if (typeof block === "string") {
         return true;
     }
-    if (typeof block !== "object" || block == null) {
+    if (!validateBlock(block, errorContainer)) {
         return false;
     }
     switch (block._type) {
         case "dictionary":
-            return "keyType" in block && "valueType" in block;
+            return validateProperties(block, errorContainer, "keyType", "valueType");
         case "array":
-            return "elementType" in block;
+            return validateProperties(block, errorContainer, "elementType");
         case "object":
-            return "properties" in block;
+            return validateProperties(block, errorContainer, "properties");
         case "number":
             return true;
         case "boolean":
@@ -251,31 +367,38 @@ export function validateTypeBlock(block: TypeBlock): boolean {
         case "string":
             return true;
         case "id":
-            return "of" in block;
+            return validateProperties(block, errorContainer, "of");
         case "itemStack":
             return true;
         case "action":
             return true;
         default:
+            errorContainer.message = `block has unknown type '${block._type}'`;
             return false;
     }
 }
 
-export function validateMethodTypeBlock(block: MethodTypeBlock): boolean {
-    if (typeof block !== "object" || block == null) {
+export function validateMethodTypeBlock(
+    block: any,
+    errorContainer: { message: string }
+): block is MethodTypeBlock {
+    if (!validateBlock(block, errorContainer)) {
         return false;
     }
-    return "run" in block;
+    return validateProperties(block, errorContainer, "run");
 }
 
-export function validatePropertyBlock(block: TypeBlock & { value: StateBlock }): boolean {
-    if (typeof block !== "object" || block == null) {
+export function validatePropertyBlock(
+    block: any,
+    errorContainer: { message: string }
+): block is TypeBlock & { value: any } {
+    if (!validateBlock(block, errorContainer, true)) {
         return false;
     }
-    if (!("value" in block)) {
+    if (!validateProperties(block, errorContainer, "value")) {
         return false;
     }
-    if (!validateTypeBlock(block)) {
+    if (!validateTypeBlock(block, errorContainer)) {
         return false;
     }
     return true;

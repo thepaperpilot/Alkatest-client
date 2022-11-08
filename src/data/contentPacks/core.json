@@ -100,7 +100,7 @@
                 "slots": {
                     "_type": "property",
                     "object": {
-                        "_type": "getObject",
+                        "_type": "getContext",
                         "id": {
                             "_type": "property",
                             "object": "@instance",
@@ -389,7 +389,6 @@
                                 }
                             },
                             "value": {
-                                "_type": "entry",
                                 "key": {
                                     "_type": "property",
                                     "object": "@element",
