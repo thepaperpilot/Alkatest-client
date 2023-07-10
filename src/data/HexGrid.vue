@@ -1,17 +1,17 @@
 <template>
     <div class="grid">
         <div v-for="(row, rowIndex) in gridData" :key="rowIndex" class="row">
-            <transition-group name="drop" tag="div">
-                <div
-                    v-for="(color, colIndex) in row"
-                    :key="`${rowIndex}-${colIndex}-${color}`"
-                    class="hexagon-wrapper"
-                    :style="{ '--color': color }"
-                    @click="updateColor(rowIndex, colIndex)"
-                    @mouseover="setHoveredCell(rowIndex, colIndex)"
-                    @mouseout="resetHoveredCell"
-                >
-                    <div class="hexagon" :style="{ backgroundColor: color }"></div>
+            <div
+                v-for="(color, colIndex) in row"
+                :key="`${rowIndex}-${colIndex}-${color}`"
+                class="hexagon-wrapper"
+                :style="{ '--color': color }"
+                @click="updateColor(rowIndex, colIndex)"
+                @mouseover="setHoveredCell(rowIndex, colIndex)"
+                @mouseout="resetHoveredCell"
+            >
+                <div class="hexagon" :style="{ backgroundColor: color }"></div>
+                <transition name="fade">
                     <div
                         v-if="
                             hoveredCell?.row === rowIndex &&
@@ -23,8 +23,8 @@
                     >
                         <div class="hexagon" :style="{ backgroundColor: selectedColor }"></div>
                     </div>
-                </div>
-            </transition-group>
+                </transition>
+            </div>
         </div>
     </div>
 </template>
@@ -65,14 +65,14 @@ function resetHoveredCell() {
 }
 
 .row {
-    margin-top: -1vmin;
+    margin-top: -1vw;
 }
 
 .hexagon-wrapper {
     position: relative;
-    width: 5vmin;
-    height: 5vmin;
-    margin: 0.2vmin;
+    width: 5vw;
+    height: 5vw;
+    margin: 0.2vw;
 }
 
 .hexagon-wrapper::before,
@@ -81,9 +81,9 @@ function resetHoveredCell() {
 .hexagon-overlay::after {
     content: "";
     position: absolute;
-    bottom: 0.1vmin;
+    bottom: 0.1vw;
     width: 50%;
-    height: 0.6vmin;
+    height: 0.6vw;
     backdrop-filter: blur(3px);
     background-color: var(--color);
     transform-origin: bottom;
@@ -111,7 +111,6 @@ function resetHoveredCell() {
     height: 100%;
     backdrop-filter: blur(3px);
     clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
-    transition-duration: 0s;
 }
 
 .hexagon-overlay {
@@ -123,6 +122,12 @@ function resetHoveredCell() {
     opacity: 0.5;
     pointer-events: none;
     animation: bounce 1s infinite;
+}
+
+/* for some reason the transition is instant sometimes when hovering stops */
+.fade-enter-from,
+.fade-leave-to {
+    opacity: 0;
 }
 
 @keyframes bounce {
