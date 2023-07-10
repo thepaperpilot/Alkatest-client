@@ -1,102 +1,41 @@
-import type {
-    ActionBlock,
-    ArrayBlock,
-    ContentPack,
-    NodeType,
-    ItemType,
-    TypeType
-} from "alkatest-common/types";
-import { createBoard, Shape } from "features/boards/board";
 import { jsx } from "features/feature";
-import { globalBus } from "game/events";
 import type { BaseLayer, GenericLayer } from "game/layers";
 import { createLayer } from "game/layers";
-import { persistent } from "game/persistence";
 import type { PlayerData } from "game/player";
-import { render } from "util/vue";
-import { computed, ref, watch } from "vue";
+import { computed } from "vue";
 import Chat from "./Chat.vue";
-import { processContentPacks } from "./contentPackLoader";
-import { Context, run } from "./contentPackResolver";
-import core from "./contentPacks/core.json";
-import { emit } from "./socket";
+import HexGrid from "./HexGrid.vue";
+import { persistent } from "game/persistence";
+import "./main.css";
 
-const knownContentPacks: Record<string, ContentPack> = {
-    core
+const tiles = {
+    gray: "rgba(64, 64, 64, 0.6)",
+    red: "rgba(255, 0, 0, 0.86)",
+    green: "rgba(0, 255, 0, 0.6)",
+    blue: "rgba(0, 0, 255, 0.6)"
 };
 
 /**
  * @hidden
  */
 export const main = createLayer("main", function (this: BaseLayer) {
-    const contentPacks = persistent<(ContentPack | string)[]>(["core"]);
-    const newGame = persistent<boolean>(true);
-
-    const itemTypes = ref<Record<string, ItemType>>({});
-    const nodeTypes = ref<Record<string, NodeType>>({});
-    const customTypes = ref<Record<string, TypeType>>({});
-    const customObjects = ref<Context>({});
-    const events = ref<Record<string, ArrayBlock<ActionBlock>[]>>({});
-    watch(contentPacks, contentPacks => {
-        const { items, nodes, types, objects, eventListeners } = processContentPacks(
-            contentPacks.map(pack => (typeof pack === "string" ? knownContentPacks[pack] : pack))
-        );
-        console.log(items, nodes, types, objects, eventListeners);
-        itemTypes.value = items;
-        nodeTypes.value = nodes;
-        customTypes.value = types;
-        customObjects.value = objects;
-        events.value = eventListeners;
-    });
-
-    const board = createBoard(() => ({
-        startNodes: () => [],
-        types: {
-            placeholder: {
-                shape: Shape.Diamond,
-                size: 10,
-                title: "placeholder"
-            }
-        },
-        width: "calc(100% + 20px)",
-        height: "calc(100% + 100px)",
-        style: "margin-top: -50px; margin-left: -10px; overflow: hidden"
-    }));
-
-    const position = ref<{ x: number; y: number }>({ x: 0, y: 0 });
-    setInterval(() => {
-        const pos = board.mousePosition.value;
-        if (pos && (pos.x !== position.value.x || pos.y !== position.value.y)) {
-            position.value = pos;
-            emit("set cursor position", pos);
-        }
-    }, 50);
-
+    const grid = persistent([
+        [tiles.gray, tiles.gray],
+        [tiles.gray, tiles.gray, tiles.gray],
+        [tiles.gray, tiles.gray]
+    ]);
     return {
         name: "Main",
-        newGame,
         minimizable: false,
-        contentPacks,
-        itemTypes,
-        nodeTypes,
-        customTypes,
-        customObjects,
-        events,
-        board,
+        classes: { main: true },
+        grid,
         display: jsx(() => (
             <>
-                {render(board)}
+                <HexGrid gridData={grid.value} selectedColor={tiles.red} />
                 <Chat />
             </>
         ))
     };
-});
-
-globalBus.on("onLoad", () => {
-    if (main.newGame.value) {
-        main.events.value.newGame.forEach(actions => run(actions));
-        // main.newGame.value = false;
-    }
 });
 
 /**

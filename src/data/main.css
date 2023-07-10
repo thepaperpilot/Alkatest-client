@@ -1,0 +1,26 @@
+.main::before {
+    content: "";
+    position: fixed;
+    top: -100vmax;
+    left: -100vmax;
+    right: -100vmax;
+    bottom: -100vmax;
+    opacity: 0.25;
+    background:
+      linear-gradient(45deg, #81A1C1 25%, transparent 25%) -100px 0,
+      linear-gradient(45deg, transparent 75%, #81A1C1 75%) -100px 0,
+      linear-gradient(135deg, #88C0D0 25%, transparent 25%),
+      linear-gradient(135deg, transparent 75%, #88C0D0 75%);
+    background-size: 200px 200px;
+    background-color: #2E3440;
+    animation: moveBackground 30s linear infinite;
+}
+
+@keyframes moveBackground {
+  0% {
+    transform: translate(0, 0);
+  }
+  100% {
+    transform: translate(200px, 200px);
+  }
+}

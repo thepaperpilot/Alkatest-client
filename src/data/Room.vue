@@ -19,7 +19,6 @@
                 <h3>{{ room.name }}</h3>
             </button>
             <div class="room-host">Hosted by {{ room.host }}</div>
-            <div class="room-host">{{ room.numContentPacks }} active content packs</div>
         </div>
         <div v-else class="details" style="display: flex">
             <span>Password:</span>
@@ -39,7 +38,13 @@ import { ref, toRefs, watch } from "vue";
 import Text from "components/fields/Text.vue";
 import { Direction } from "util/common";
 import Tooltip from "features/tooltips/Tooltip.vue";
-import { ClientRoomData } from "alkatest-common/types";
+
+// For some reason it won't find the interface from chromatic-common
+interface ClientRoomData {
+    name: string;
+    host: string;
+    hasPassword: boolean;
+}
 
 const _props = defineProps<{
     isPrivate: boolean;

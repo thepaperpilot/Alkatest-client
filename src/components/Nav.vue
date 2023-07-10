@@ -149,6 +149,7 @@ function openDiscord() {
     height: 46px;
     width: 100%;
     border-bottom: 4px solid var(--outline);
+    z-index: 2;
 }
 
 .nav > * {

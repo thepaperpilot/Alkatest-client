@@ -17,7 +17,6 @@ import {
     GameState,
     ServerToClientEvents
 } from "alkatest-common/types";
-import { main } from "./projEntry";
 
 export const connected = ref<boolean>(false);
 export const room = ref<string | null>(null);
@@ -160,14 +159,6 @@ function setupSocket(socket: Socket<ServerToClientEvents, ClientToServerEvents>)
     });
     socket.on("set nicknames", n => {
         nicknames.value = n;
-    });
-    socket.on("set cursor position", (id, pos) => {
-        if (id !== socket.id) {
-            cursorPositions.value[id] = pos;
-        }
-    });
-    socket.on("set content packs", contentPacks => {
-        main.contentPacks.value = contentPacks;
     });
 }
 

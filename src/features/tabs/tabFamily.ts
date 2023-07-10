@@ -1,4 +1,4 @@
-import type { CoercableComponent, OptionsFunc, Replace, StyleValue } from "features/feature";
+import type { CoercableComponent, GenericComponent, OptionsFunc, Replace, StyleValue } from "features/feature";
 import { Component, GatherProps, getUniqueID, setDefault, Visibility } from "features/feature";
 import TabButtonComponent from "features/tabs/TabButton.vue";
 import TabFamilyComponent from "features/tabs/TabFamily.vue";
@@ -66,7 +66,7 @@ export interface BaseTabFamily {
     activeTab: Ref<GenericTab | CoercableComponent | null>;
     selected: Persistent<string>;
     type: typeof TabFamilyType;
-    [Component]: typeof TabFamilyComponent;
+    [Component]: GenericComponent;
     [GatherProps]: () => Record<string, unknown>;
 }
 
@@ -100,7 +100,7 @@ export function createTabFamily<T extends TabFamilyOptions>(
 
         tabFamily.id = getUniqueID("tabFamily-");
         tabFamily.type = TabFamilyType;
-        tabFamily[Component] = TabFamilyComponent;
+        tabFamily[Component] = TabFamilyComponent as GenericComponent;
 
         tabFamily.tabs = Object.keys(tabs).reduce<Record<string, GenericTabButton>>(
             (parsedTabs, tab) => {

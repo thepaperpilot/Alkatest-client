@@ -60,17 +60,16 @@
 </template>
 
 <script setup lang="tsx">
-import type { ClientRoomData } from "alkatest-common/types";
+import Modal from "components/Modal.vue";
 import Text from "components/fields/Text.vue";
 import Toggle from "components/fields/Toggle.vue";
-import Modal from "components/Modal.vue";
 import {
     connected,
+    room as currentRoom,
     emit as emitToServer,
     getGameState,
     isHosting,
-    nicknames,
-    room as currentRoom
+    nicknames
 } from "data/socket";
 import { jsx } from "features/feature";
 import { createTabFamily } from "features/tabs/tabFamily";
@@ -80,8 +79,14 @@ import settings from "game/settings";
 import { render } from "util/vue";
 import type { ComponentPublicInstance } from "vue";
 import { ref, watch } from "vue";
-import { main } from "./projEntry";
 import Room from "./Room.vue";
+
+// For some reason it won't find the interface from chromatic-common
+interface ClientRoomData {
+    name: string;
+    host: string;
+    hasPassword: boolean;
+}
 
 export type LoadablePlayerData = Omit<Partial<PlayerData>, "id"> & { id: string; error?: unknown };
 
@@ -241,7 +246,6 @@ function host(room: string, password?: string, privateRoom?: boolean) {
         name: room,
         password,
         nickname: settings.nickname,
-        contentPacks: main.contentPacks.value,
         privateRoom: privateRoom === true,
         state: getGameState()
     });
